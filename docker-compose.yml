@@ -21,6 +21,8 @@ services:
       - BETTER_AUTH_URL=${BETTER_AUTH_URL}
       - FRONTEND_URL=${FRONTEND_URL} # Pour le CORS
 
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+
       # Emails (Interne Docker)
       - SMTP_HOST=mailpit
       - SMTP_PORT=1025
