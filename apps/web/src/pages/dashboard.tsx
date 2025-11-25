@@ -8,7 +8,7 @@ import { toast } from "sonner"
 import { useMutation, useQueryClient } from "@tanstack/react-query" // useQueryClient est important
 import { Trash2 } from "lucide-react" // L'icône poubelle
 import { useConfirm } from "../lib/use-confirm"
-// ... autres imports
+import { PageHead } from "../components/shared/PageHead"
 
 type Generation = {
   id: string
@@ -50,6 +50,8 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
+      <PageHead title="Vue d'ensemble" />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="space-y-1">

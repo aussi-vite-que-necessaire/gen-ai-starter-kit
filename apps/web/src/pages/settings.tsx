@@ -2,6 +2,7 @@ import { useState } from "react"
 import { authClient } from "../lib/auth-client"
 import { toast } from "sonner"
 import { User, Save, Loader2 } from "lucide-react"
+import { PageHead } from "../components/shared/PageHead"
 
 export default function SettingsPage() {
   const { data: session, refetch } = authClient.useSession()
@@ -18,8 +19,8 @@ export default function SettingsPage() {
 
       await refetch() // Met à jour la session locale (Sidebar, Header...)
       toast.success("Profil mis à jour avec succès")
-    } catch (error: any) {
-      toast.error("Erreur lors de la mise à jour")
+    } catch (error) {
+      toast.error(`Erreur lors de la mise à jour: ${error}`)
     } finally {
       setLoading(false)
     }
@@ -27,6 +28,8 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl space-y-8 animate-in fade-in duration-500">
+      <PageHead title="Paramètres" />
+
       <div className="space-y-1">
         <h1 className="text-2xl font-bold text-gray-900">Paramètres</h1>
         <p className="text-gray-500">Gérez vos informations personnelles.</p>

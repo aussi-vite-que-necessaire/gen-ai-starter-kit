@@ -5,6 +5,7 @@ import { Sparkles, Copy, Check } from "lucide-react"
 import { cn } from "../lib/utils"
 import { toast } from "sonner"
 import ReactMarkdown from "react-markdown"
+import { PageHead } from "../components/shared/PageHead"
 
 export default function GeneratorPage() {
   const [input, setInput] = useState("")
@@ -30,6 +31,8 @@ export default function GeneratorPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
+      <PageHead title="Générateur IA" />
+
       <div className="space-y-2">
         <h1 className="text-3xl font-bold text-gray-900">Résumeur IA</h1>
         <p className="text-gray-500">

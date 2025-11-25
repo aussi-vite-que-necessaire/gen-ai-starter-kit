@@ -2,6 +2,7 @@ import { useState } from "react"
 import { authClient } from "../lib/auth-client"
 import { useNavigate, Link } from "react-router-dom"
 import { Loader2 } from "lucide-react"
+import { PageHead } from "../components/shared/PageHead"
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("")
@@ -28,6 +29,7 @@ export default function RegisterPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
+      <PageHead title="Inscription" />
       <div className="w-full max-w-sm space-y-6 rounded-lg bg-white p-8 shadow-sm border border-gray-200">
         <div className="space-y-2 text-center">
           <h1 className="text-2xl font-bold tracking-tight">Inscription</h1>
