@@ -1,0 +1,22 @@
+{
+  "name": "proof-of-project",
+  "version": "1.0.0",
+  "main": "server.js",
+  "dependencies": {
+    "drizzle-orm": "^0.44.7",
+    "pg": "^8.11.0",
+    "redis": "^4.6.0",
+    "drizzle-kit": "^0.31.7"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev:db:up": "docker compose -f docker-compose.dev.yml up -d",
+    "dev:db:down": "docker compose -f docker-compose.dev.yml down",
+    "dev:db:logs": "docker compose -f docker-compose.dev.yml logs -f db",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "overrides": {
+    "esbuild": "^0.27.0"
+  }
+}

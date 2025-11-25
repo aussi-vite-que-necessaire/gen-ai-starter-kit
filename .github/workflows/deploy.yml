@@ -1,0 +1,89 @@
+name: Deploy App
+
+on:
+  push:
+    branches: ["main"]
+
+env:
+  BASE_DOMAIN: "avqn.ch"
+  PROJECT_NAME: "proof-of-project"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:latest
+
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            mkdir -p ~/apps/${{ env.PROJECT_NAME }}
+            cd ~/apps/${{ env.PROJECT_NAME }}
+
+            curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                 -o docker-compose.yml \
+                 -L https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml
+
+            echo "Génération du fichier .env..."
+
+            cat <<EOF > .env
+            IMAGE_NAME=ghcr.io/${{ github.repository }}:latest
+            SERVICE_NAME=${{ env.PROJECT_NAME }}
+            DOMAIN_NAME=${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
+            ENV_TYPE=production
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            POSTGRES_USER=app_user
+            POSTGRES_DB=mydb
+            EOF
+
+            chmod 600 .env
+
+            docker compose rm -f app || true
+            docker compose stop app || true
+
+            docker compose pull
+
+            docker compose up -d db redis mailpit db-backup
+
+            echo "Attente de la base de données..."
+            for i in {1..30}; do
+              docker compose exec -T db pg_isready -U app_user -d mydb && break
+              echo "Attente de la DB... ($i/30)"
+              sleep 1
+            done
+
+            echo "Application des migrations..."
+            docker compose run --rm -e DATABASE_URL="postgresql://app_user:${{ secrets.DB_PASSWORD }}@db:5432/mydb" app npm run db:migrate || {
+              echo "❌ ERREUR: Les migrations ont échoué!"
+              docker compose logs db | tail -20
+              exit 1
+            }
+            echo "✅ Migrations appliquées avec succès"
+
+            echo "Démarrage de l'application..."
+            docker compose up -d

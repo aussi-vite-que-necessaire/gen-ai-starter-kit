@@ -1,0 +1,78 @@
+name: Deploy PR Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+env:
+  BASE_DOMAIN: "avqn.ch"
+  PROJECT_NAME: "proof-of-project"
+
+jobs:
+  deploy-preview:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:pr-${{ github.event.number }}
+
+      - name: Deploy Preview to VPS
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            PR_ID="pr-${{ github.event.number }}"
+            FOLDER_NAME="${{ env.PROJECT_NAME }}-$PR_ID"
+
+            mkdir -p ~/apps/$FOLDER_NAME
+            cd ~/apps/$FOLDER_NAME
+
+            curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                 -o docker-compose.yml \
+                 -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/docker-compose.yml
+
+            export IMAGE_NAME=ghcr.io/${{ github.repository }}:$PR_ID
+            export SERVICE_NAME=$FOLDER_NAME
+            export DOMAIN_NAME=$PR_ID.${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
+            export DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
+            export ENV_TYPE="preview-pr-${{ github.event.number }}"
+
+            docker compose pull
+            docker compose -p $FOLDER_NAME up -d --remove-orphans
+
+            echo "Attente de la base de données..."
+            sleep 5
+
+            echo "Application des migrations..."
+            docker compose -p $FOLDER_NAME exec -T app npm run db:migrate || echo "Migrations déjà appliquées ou erreur (non bloquant)"
+
+      - name: Comment PR URL
+        uses: thollander/actions-comment-pull-request@v2
+        with:
+          message: |
+            🚀 **Preview Environment is ready!**
+
+            ✅ **URL:** https://pr-${{ github.event.number }}.${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
+          comment_tag: execution
