@@ -4,9 +4,7 @@ on:
   push:
     branches: ["main"]
 
-env:
-  BASE_DOMAIN: "avqn.ch"
-  PROJECT_NAME: "gen-ai-starter-kit"
+# PLUS BESOIN DE "env:" ICI, ON UTILISE "vars."
 
 jobs:
   deploy:
@@ -35,10 +33,10 @@ jobs:
           tags: ghcr.io/${{ github.repository }}/api:latest
 
       # --- BUILD WEB ---
-      # ⚠️ IMPORTANT : On injecte l'URL de prod pour que Vite l'intègre au build static
       - name: Create Web Env for Production
+        # ICI : On utilise vars.MAIN_DOMAIN
         run: |
-          echo "VITE_API_URL=https://api.${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}" > ./apps/web/.env
+          echo "VITE_API_URL=https://api.${{ vars.MAIN_DOMAIN }}" > ./apps/web/.env
 
       - name: Build and Push Web
         uses: docker/build-push-action@v4
@@ -55,51 +53,45 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            # Login Docker
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # Setup Folder
-            mkdir -p ~/apps/${{ env.PROJECT_NAME }}
-            cd ~/apps/${{ env.PROJECT_NAME }}
+            # On utilise la variable PROJECT_NAME pour le dossier
+            mkdir -p ~/apps/${{ vars.PROJECT_NAME }}
+            cd ~/apps/${{ vars.PROJECT_NAME }}
 
-            # Download Docker Compose
             curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                  -o docker-compose.yml \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml
 
-            # Generate .env (Compatible avec ton schema Zod env.ts)
             echo "Génération du fichier .env..."
             cat <<EOF > .env
-            # --- CONFIG DOCKER ---
+            # --- DOCKER ---
             IMAGE_NAME_API=ghcr.io/${{ github.repository }}/api:latest
             IMAGE_NAME_WEB=ghcr.io/${{ github.repository }}/web:latest
-            SERVICE_NAME=${{ env.PROJECT_NAME }}
+            SERVICE_NAME=${{ vars.PROJECT_NAME }}
             ENV_TYPE=production
 
-            # --- DOMAINES TRAEFIK ---
-            DOMAIN_NAME_WEB=${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
-            DOMAIN_NAME_API=api.${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
+            # --- TRAEFIK (Logique dynamique) ---
+            # Le Web prend le domaine principal
+            DOMAIN_NAME_WEB=${{ vars.MAIN_DOMAIN }}
+            # L'API prend le sous-domaine "api."
+            DOMAIN_NAME_API=api.${{ vars.MAIN_DOMAIN }}
 
-            # --- API CONFIG (env.ts) ---
+            # --- API CONFIG ---
             NODE_ENV=production
             PORT=3000
+            FRONTEND_URL=https://${{ vars.MAIN_DOMAIN }}
 
-            # CORS : L'API doit accepter les requêtes venant du Front
-            FRONTEND_URL=https://${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
-
-            # Database (Format URL complet pour Drizzle)
+            # --- DB & REDIS ---
             DATABASE_URL=postgresql://app_user:${{ secrets.DB_PASSWORD }}@db:5432/mydb
-
-            # Redis
             REDIS_HOST=redis
             REDIS_PORT=6379
 
-            # --- AUTHENTIFICATION ---
+            # --- AUTH ---
             BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}
-            # L'URL publique de l'API pour les callbacks OAuth/Emails
-            BETTER_AUTH_URL=https://api.${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
+            BETTER_AUTH_URL=https://api.${{ vars.MAIN_DOMAIN }}
 
-            # --- INFRA (Variables pour conteneurs db/backup) ---
+            # --- INFRA ---
             DB_PASSWORD=${{ secrets.DB_PASSWORD }}
             POSTGRES_USER=app_user
             POSTGRES_DB=mydb
@@ -107,31 +99,23 @@ jobs:
 
             chmod 600 .env
 
-            # 1. On démarre d'abord l'Infrastructure (DB + Redis)
-            echo "Démarrage de l'infrastructure..."
+            # Démarrage Infra
+            echo "Démarrage Infra..."
             docker compose up -d db redis db-backup mailpit
 
-            # 2. On attend que la DB soit prête (Boucle de vérification)
-            echo "Attente de la disponibilité de la DB..."
-            # On essaie de pinger la DB pendant 30 secondes max
+            # Wait DB
+            echo "Attente DB..."
             until docker compose exec -T db pg_isready -U app_user -d mydb; do
-              echo "DB en cours de démarrage..."
               sleep 2
             done
-            echo "✅ DB Prête !"
 
-            # 3. MIGRATIONS ROBUSTES (La clé est ici !)
-            # On utilise 'run --rm' au lieu de 'exec'.
-            # Ça crée un conteneur jetable qui ne dépend pas de la santé de l'API principale.
-            echo "Lancement des migrations..."
+            # Migration Robuste (Run --rm)
+            echo "Migration..."
             docker compose run --rm api npm run db:migrate || {
-              echo "❌ ERREUR CRITIQUE : Les migrations ont échoué."
+              echo "❌ ERREUR MIGRATIONS"
               exit 1
             }
-            echo "✅ Migrations appliquées."
 
-            # 4. Enfin, on démarre/update les applications
-            echo "Démarrage des Apps (API + Web)..."
+            # Start Apps
             docker compose up -d api web --remove-orphans
-
-            echo "🚀 Déploiement terminé avec succès !"
+            echo "✅ Déployé sur https://${{ vars.MAIN_DOMAIN }}"
