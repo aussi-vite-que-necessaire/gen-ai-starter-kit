@@ -5,7 +5,7 @@ on:
     types: [closed]
 
 env:
-  PROJECT_NAME: "proof-of-project"
+  PROJECT_NAME: "gen-ai-starter-kit"
 
 jobs:
   cleanup:
@@ -19,6 +19,7 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             PR_ID="pr-${{ github.event.number }}"
+            # Le nom du dossier sera bien "gen-ai-starter-kit-pr-XX"
             FOLDER_NAME="${{ env.PROJECT_NAME }}-$PR_ID"
 
             TARGET_DIR="$HOME/apps/$FOLDER_NAME"
@@ -26,8 +27,9 @@ jobs:
             if [ -d "$TARGET_DIR" ]; then
               cd "$TARGET_DIR"
               
-              echo "🗑  Suppression du conteneur et des volumes..."
-              docker compose -p $FOLDER_NAME down --volumes
+              echo "🗑  Arrêt des services (API, Web, DB, Redis)..."
+              # Le down va supprimer api, web, db, redis grâce au docker-compose.yml présent
+              docker compose -p $FOLDER_NAME down --volumes --remove-orphans
               
               echo "🗑  Suppression du dossier..."
               cd ..
