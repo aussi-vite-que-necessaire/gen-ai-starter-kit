@@ -4,6 +4,7 @@ import { cors } from "hono/cors"
 import { logger } from "hono/logger"
 import { env } from "./env"
 import { auth } from "./infra/auth" // Import de l'auth
+import aiRouter from "./interface/http/routes/ai"
 
 const app = new Hono()
 
@@ -16,19 +17,17 @@ app.use(
     allowMethods: ["POST", "GET", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
     maxAge: 600,
-    credentials: true, // OBLIGATOIRE pour que les cookies passent
+    credentials: true,
   })
 )
 
 app.use("*", logger())
 
-// 2. Montage des routes Auth
-// Hono intercepte toutes les requêtes qui commencent par /api/auth/*
 app.on(["POST", "GET"], "/api/auth/**", (c) => {
   return auth.handler(c.req.raw)
 })
 
-// ... Le reste de tes routes (health, etc.)
+app.route("/api/ai", aiRouter)
 
 serve({
   fetch: app.fetch,

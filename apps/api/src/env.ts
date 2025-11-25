@@ -24,6 +24,9 @@ const envSchema = z.object({
   // Auth
   BETTER_AUTH_SECRET: z.string(),
   BETTER_AUTH_URL: z.string().url(),
+
+  // AI
+  OPENAI_API_KEY: z.string(),
 })
 
 const parsedEnv = envSchema.safeParse(process.env)
