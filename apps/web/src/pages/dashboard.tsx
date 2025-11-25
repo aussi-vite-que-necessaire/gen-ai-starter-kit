@@ -4,6 +4,7 @@ import { authClient } from "../lib/auth-client"
 import { FileText, Copy } from "lucide-react"
 import { Skeleton } from "../components/ui/skeleton"
 import { timeAgo } from "../lib/utils" // Ajoute l'utilitaire date
+import { toast } from "sonner"
 
 // Type basique des données attendues
 type Generation = {
