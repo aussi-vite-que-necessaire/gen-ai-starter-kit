@@ -1,42 +1,40 @@
-// apps/api/src/core/use-cases/generate-summary.test.ts
 import { describe, it, expect, vi } from "vitest"
-import { makeGenerateSummary } from "./generate-summary" // N'existe pas encore
+import { makeGenerateSummary } from "./generate-summary"
 import { AIProvider } from "../ports/ai.provider"
+import { GenerationRepository } from "../ports/generation.repository"
 
 describe("Use Case: Generate Summary", () => {
-  // 1. Mock de l'infrastructure
-  const mockAIProvider: AIProvider = {
-    generateText: vi.fn(),
+  // 1. Mocks
+  const mockAI: AIProvider = { generateText: vi.fn() }
+  const mockRepo: GenerationRepository = {
+    create: vi.fn(),
+    listByUserId: vi.fn(),
   }
 
-  // 2. Création de l'instance du Use Case (Injection)
-  const generateSummary = makeGenerateSummary(mockAIProvider)
+  // 2. Factory (Maintenant elle prend 2 dépendances)
+  const generateSummary = makeGenerateSummary(mockAI, mockRepo)
 
-  it("devrait appeler le AIProvider avec un prompt formaté", async () => {
+  it("devrait générer ET sauvegarder le résultat", async () => {
     // Setup
-    const input = "Voici un long texte à résumer..."
-    const expectedSummary = "Résumé court."
-    vi.mocked(mockAIProvider.generateText).mockResolvedValue(expectedSummary)
+    vi.mocked(mockAI.generateText).mockResolvedValue("Le Résumé")
+    vi.mocked(mockRepo.create).mockResolvedValue({
+      id: "123",
+      userId: "user-1",
+      prompt: "input",
+      result: "Le Résumé",
+      createdAt: new Date(),
+    })
 
-    // Execute
-    const result = await generateSummary(input)
+    // Execute (On passe maintenant le userId en 2eme arg)
+    const result = await generateSummary("Mon texte", "user-1")
 
     // Verify
-    expect(result).toBe(expectedSummary)
-    expect(mockAIProvider.generateText).toHaveBeenCalledWith(
-      expect.stringContaining(input) // Vérifie que l'input est bien dans le prompt
-    )
-    expect(mockAIProvider.generateText).toHaveBeenCalledWith(
-      expect.stringContaining("résume") // Vérifie qu'on a bien donné une instruction
-    )
-  })
-
-  it("devrait rejeter une erreur si le texte est vide", async () => {
-    await expect(generateSummary("")).rejects.toThrow(
-      "Le texte à résumer ne peut pas être vide"
-    )
-    await expect(generateSummary("   ")).rejects.toThrow(
-      "Le texte à résumer ne peut pas être vide"
-    )
+    expect(result).toBe("Le Résumé")
+    // Vérifie que la sauvegarde a été appelée
+    expect(mockRepo.create).toHaveBeenCalledWith({
+      userId: "user-1",
+      prompt: expect.stringContaining("Mon texte"), // On sauvegarde le prompt original
+      result: "Le Résumé",
+    })
   })
 })

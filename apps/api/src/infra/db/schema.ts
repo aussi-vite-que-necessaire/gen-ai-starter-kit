@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core"
+import { pgTable, text, timestamp, boolean, uuid } from "drizzle-orm/pg-core"
 
 // --- TABLES BETTER-AUTH ---
 
@@ -50,4 +50,15 @@ export const verification = pgTable("verification", {
   expiresAt: timestamp("expiresAt").notNull(),
   createdAt: timestamp("createdAt"),
   updatedAt: timestamp("updatedAt"),
+})
+
+// --- Table Métier : Generations ---
+export const generation = pgTable("generation", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id), // Lien avec l'utilisateur (Clé étrangère)
+  prompt: text("prompt").notNull(),
+  result: text("result").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 })

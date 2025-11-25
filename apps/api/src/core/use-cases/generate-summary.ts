@@ -1,25 +1,31 @@
-// apps/api/src/core/use-cases/generate-summary.ts
 import { AIProvider } from "../ports/ai.provider"
+import { GenerationRepository } from "../ports/generation.repository"
 
-// Type de la fonction use-case finale
-export type GenerateSummaryUseCase = (text: string) => Promise<string>
+// Signature mise à jour : prend userId en plus
+export type GenerateSummaryUseCase = (
+  text: string,
+  userId: string
+) => Promise<string>
 
-/**
- * Factory : Crée le use case en injectant les dépendances.
- */
-export const makeGenerateSummary = (ai: AIProvider): GenerateSummaryUseCase => {
-  // Retourne la fonction exécutable
-  return async (text: string) => {
-    // 1. Validation Domain
+export const makeGenerateSummary = (
+  ai: AIProvider,
+  repo: GenerationRepository // Nouvelle dépendance injectée
+): GenerateSummaryUseCase => {
+  return async (text: string, userId: string) => {
     if (!text || text.trim().length === 0) {
       throw new Error("Le texte à résumer ne peut pas être vide")
     }
 
-    // 2. Logique Métier (Construction du prompt)
-    const prompt = `Tu es un expert en synthèse. Merci de résumer le texte suivant de manière claire et concise, en français :\n\n"${text}"`
+    // 1. Génération IA
+    const promptSystem = `Tu es un expert en synthèse. Merci de résumer le texte suivant de manière claire et concise, en français :\n\n"${text}"`
+    const summary = await ai.generateText(promptSystem)
 
-    // 3. Appel Infra via le Port
-    const summary = await ai.generateText(prompt)
+    // 2. Sauvegarde en DB (Side Effect contrôlé)
+    await repo.create({
+      userId,
+      prompt: text, // On sauvegarde le texte original
+      result: summary,
+    })
 
     return summary
   }
