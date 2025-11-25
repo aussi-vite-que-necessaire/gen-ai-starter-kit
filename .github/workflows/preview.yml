@@ -121,7 +121,7 @@ jobs:
             sleep 10
 
             echo "Migrations..."
-            docker compose -p $FOLDER_NAME exec -T api npm run db:migrate || echo "Warning migration"
+            docker compose -p $FOLDER_NAME exec -T api npm run db:migrate
 
       - name: Comment PR URL
         uses: thollander/actions-comment-pull-request@v2
