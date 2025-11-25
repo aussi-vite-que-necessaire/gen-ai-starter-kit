@@ -6,7 +6,7 @@ dotenv.config()
 const envSchema = z.object({
   // Config Serveur
   NODE_ENV: z
-    .enum(["development", "production", "test"])
+    .enum(["development", "production", "test", "preview"])
     .default("development"),
 
   PORT: z.coerce.number().default(3000),
