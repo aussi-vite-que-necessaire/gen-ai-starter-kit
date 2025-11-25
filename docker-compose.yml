@@ -7,29 +7,31 @@ services:
       - web_network
       - default
     environment:
-      - NODE_ENV=${ENV_TYPE}
+      # Config Générale
+      - NODE_ENV=${NODE_ENV} # production ou preview (défini dans le .env généré)
       - PORT=3000
-      # DB & Cache
-      - POSTGRES_HOST=db
-      - POSTGRES_USER=app_user
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_DB=mydb
-      - DATABASE_URL=postgresql://app_user:${DB_PASSWORD}@db:5432/mydb
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      # Mail
+
+      # Database & Cache (Injectés depuis le .env généré)
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+
+      # Sécurité & Auth (Les lignes qui manquaient !)
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL}
+      - FRONTEND_URL=${FRONTEND_URL} # Pour le CORS
+
+      # Emails (Interne Docker)
       - SMTP_HOST=mailpit
       - SMTP_PORT=1025
-      # URLs (Pour CORS)
-      - FRONTEND_URL=https://${DOMAIN_NAME_WEB}
     labels:
       - "traefik.enable=true"
-      # Router API : api.domaine.com
+      # Router API
       - "traefik.http.routers.${SERVICE_NAME}-api.rule=Host(`${DOMAIN_NAME_API}`)"
       - "traefik.http.routers.${SERVICE_NAME}-api.entrypoints=websecure"
       - "traefik.http.routers.${SERVICE_NAME}-api.tls.certresolver=myresolver"
       - "traefik.http.services.${SERVICE_NAME}-api.loadbalancer.server.port=3000"
-      # Rate Limit API
+      # Rate Limit
       - "traefik.http.middlewares.limit-api.ratelimit.average=100"
       - "traefik.http.middlewares.limit-api.ratelimit.burst=50"
       - "traefik.http.routers.${SERVICE_NAME}-api.middlewares=limit-api"
@@ -42,21 +44,13 @@ services:
       - web_network
     labels:
       - "traefik.enable=true"
-      # Router Web : domaine.com
+      # Router Web
       - "traefik.http.routers.${SERVICE_NAME}-web.rule=Host(`${DOMAIN_NAME_WEB}`)"
       - "traefik.http.routers.${SERVICE_NAME}-web.entrypoints=websecure"
       - "traefik.http.routers.${SERVICE_NAME}-web.tls.certresolver=myresolver"
       - "traefik.http.services.${SERVICE_NAME}-web.loadbalancer.server.port=80"
 
-  # --- WORKER (Optionnel pour plus tard / BullMQ) ---
-  # worker:
-  #   image: ${IMAGE_NAME_API}
-  #   command: ["node", "src/worker.js"]
-  #   networks:
-  #     - default
-  #   environment: ...
-
-  # --- INFRA (Reste identique) ---
+  # --- INFRA ---
   db:
     image: postgres:15-alpine
     restart: always
@@ -98,7 +92,7 @@ services:
       - default
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.${SERVICE_NAME}-mail.rule=Host(`emails.${DOMAIN_NAME_WEB}`)" # emails.domaine.com
+      - "traefik.http.routers.${SERVICE_NAME}-mail.rule=Host(`emails.${DOMAIN_NAME_WEB}`)"
       - "traefik.http.routers.${SERVICE_NAME}-mail.entrypoints=websecure"
       - "traefik.http.routers.${SERVICE_NAME}-mail.tls.certresolver=myresolver"
       - "traefik.http.services.${SERVICE_NAME}-mail.loadbalancer.server.port=8025"
