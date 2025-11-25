@@ -4,7 +4,7 @@ import "./App.css"
 
 export default function App() {
   // Hook magique qui récupère la session et l'état de chargement
-  const { data: session, isPending, error } = authClient.useSession()
+  const { data: session, isPending } = authClient.useSession()
 
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
