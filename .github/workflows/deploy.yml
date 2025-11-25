@@ -107,17 +107,31 @@ jobs:
 
             chmod 600 .env
 
-            # Deploy
-            docker compose pull
-            docker compose up -d --remove-orphans
+            # 1. On démarre d'abord l'Infrastructure (DB + Redis)
+            echo "Démarrage de l'infrastructure..."
+            docker compose up -d db redis db-backup mailpit
 
-            # Healthcheck & Migrations
-            echo "Attente de la base de données..."
-            sleep 10
+            # 2. On attend que la DB soit prête (Boucle de vérification)
+            echo "Attente de la disponibilité de la DB..."
+            # On essaie de pinger la DB pendant 30 secondes max
+            until docker compose exec -T db pg_isready -U app_user -d mydb; do
+              echo "DB en cours de démarrage..."
+              sleep 2
+            done
+            echo "✅ DB Prête !"
 
-            echo "Application des migrations..."
-            docker compose exec -T api npm run db:migrate || {
-              echo "❌ ERREUR MIGRATIONS"
+            # 3. MIGRATIONS ROBUSTES (La clé est ici !)
+            # On utilise 'run --rm' au lieu de 'exec'.
+            # Ça crée un conteneur jetable qui ne dépend pas de la santé de l'API principale.
+            echo "Lancement des migrations..."
+            docker compose run --rm api npm run db:migrate || {
+              echo "❌ ERREUR CRITIQUE : Les migrations ont échoué."
               exit 1
             }
-            echo "✅ Déploiement terminé !"
+            echo "✅ Migrations appliquées."
+
+            # 4. Enfin, on démarre/update les applications
+            echo "Démarrage des Apps (API + Web)..."
+            docker compose up -d api web --remove-orphans
+
+            echo "🚀 Déploiement terminé avec succès !"
