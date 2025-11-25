@@ -79,3 +79,23 @@ make console    # Shell dans le conteneur App
 ```
 
 **Backups :** Automatiques (quotidiens), stockés dans `./backups/` sur le VPS. Rétention : 7 jours, 4 semaines, 6 mois.
+
+## Architecture
+
+apps/api/src/
+├── core/ # 🧠 LE CERVEAU (Domain & Use Cases)
+│ ├── entities/ # Types Zod & TypeScript (ex: User, AISummary)
+│ ├── ports/ # Interfaces abstraites (ex: AIProvider, DatabaseRepository)
+│ ├── errors/ # Erreurs métier (ex: QuotaExceededError)
+│ └── use-cases/ # La logique pure (ex: generate-summary.ts)
+│ └── **tests**/ # Tests Unitaires (Rapides)
+│
+├── infra/ # 🔌 LES CÂBLES (Implémentations)
+│ ├── adapters/ # Implémentation des Ports (ex: OpenAIAdapter, PostgresAdapter)
+│ ├── db/ # Configuration Drizzle, Schema, Migrations
+│ └── env.ts # Validation Zod des variables d'env
+│
+└── interface/ # 🗣️ LA BOUCHE (Points d'entrée)
+├── http/ # Serveur Hono, Routes, Middlewares
+│ └── **tests**/ # Tests E2E (Appels HTTP réels sur DB de test)
+└── workers/ # Workers BullMQ (Async jobs)
