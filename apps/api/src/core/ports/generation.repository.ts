@@ -22,4 +22,6 @@ export interface GenerationRepository {
    * Récupère l'historique d'un utilisateur
    */
   listByUserId(userId: string): Promise<Generation[]>
+
+  delete(id: string, userId: string): Promise<void>
 }

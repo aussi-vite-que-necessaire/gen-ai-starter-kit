@@ -1,5 +1,5 @@
 // apps/api/src/infra/db/generation.adapter.ts
-import { desc, eq } from "drizzle-orm"
+import { and, desc, eq } from "drizzle-orm"
 import { db } from "./index" // Ton instance Drizzle (créée lors du setup initial)
 import { generation } from "./schema"
 import { GenerationRepository } from "../../core/ports/generation.repository"
@@ -32,5 +32,14 @@ export const generationAdapter: GenerationRepository = {
       .orderBy(desc(generation.createdAt))
 
     return history
+  },
+
+  async delete(id, userId) {
+    await db.delete(generation).where(
+      and(
+        eq(generation.id, id),
+        eq(generation.userId, userId) // Sécurité critique !
+      )
+    )
   },
 }

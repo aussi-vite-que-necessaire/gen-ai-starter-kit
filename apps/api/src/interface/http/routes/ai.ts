@@ -7,13 +7,16 @@ import { openaiAdapter } from "../../../infra/ai/openai.adapter"
 import { generationAdapter } from "../../../infra/db/generation.adapter" // <--- Adapter DB
 import { makeGenerateSummary } from "../../../core/use-cases/generate-summary"
 import { makeListHistory } from "../../../core/use-cases/list-history"
+import { makeDeleteGeneration } from "../../../core/use-cases/delete-generation"
+
 const app = new Hono()
 
 // --- COMPOSITION ROOT ---
 // On injecte MAINTENANT les 2 dépendances : IA + DB
 // --- COMPOSITION ROOT ---
 const generateSummary = makeGenerateSummary(openaiAdapter, generationAdapter)
-const listHistory = makeListHistory(generationAdapter) // <--- Injection
+const listHistory = makeListHistory(generationAdapter)
+const deleteGeneration = makeDeleteGeneration(generationAdapter)
 
 // Schema de validation
 const generateSchema = z.object({
@@ -62,6 +65,17 @@ app.get("/history", async (c) => {
 
   // 3. Response
   return c.json({ history })
+})
+
+app.delete("/history/:id", async (c) => {
+  const session = await auth.api.getSession({ headers: c.req.raw.headers })
+  if (!session) return c.json({ error: "Unauthorized" }, 401)
+
+  const id = c.req.param("id") // Récupère l'ID dans l'URL
+
+  await deleteGeneration(id, session.user.id)
+
+  return c.json({ success: true })
 })
 
 export default app

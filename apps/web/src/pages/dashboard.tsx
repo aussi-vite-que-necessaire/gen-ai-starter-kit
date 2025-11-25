@@ -1,10 +1,14 @@
 import { useQuery } from "@tanstack/react-query"
 import { api } from "../lib/api"
 import { authClient } from "../lib/auth-client"
-import { FileText, Copy, MessageSquare, Clock } from "lucide-react"
+import { FileText, Copy, MessageSquare, Clock, Loader2 } from "lucide-react"
 import { Skeleton } from "../components/ui/skeleton"
 import { timeAgo } from "../lib/utils"
 import { toast } from "sonner"
+import { useMutation, useQueryClient } from "@tanstack/react-query" // useQueryClient est important
+import { Trash2 } from "lucide-react" // L'icône poubelle
+import { useConfirm } from "../lib/use-confirm"
+// ... autres imports
 
 type Generation = {
   id: string
@@ -14,6 +18,8 @@ type Generation = {
 }
 
 export default function DashboardPage() {
+  const queryClient = useQueryClient() // <--- Pour rafraîchir le cache
+  const { confirm } = useConfirm()
   const { data: session, isPending: isSessionLoading } = authClient.useSession()
 
   const { data: history, isLoading: isHistoryLoading } = useQuery({
@@ -21,6 +27,21 @@ export default function DashboardPage() {
     queryFn: async () => {
       const res = await api.get("/ai/history")
       return res.data.history as Generation[]
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/ai/history/${id}`)
+    },
+    onSuccess: () => {
+      toast.success("Supprimé !")
+      // C'est ICI la magie : on invalide le cache 'ai-history'
+      // React Query va automatiquement relancer le fetch de la liste
+      queryClient.invalidateQueries({ queryKey: ["ai-history"] })
+    },
+    onError: () => {
+      toast.error("Impossible de supprimer")
     },
   })
 
@@ -138,6 +159,33 @@ export default function DashboardPage() {
                       title="Copier le résultat"
                     >
                       <Copy className="h-4 w-4" />
+                    </button>
+
+                    <button
+                      onClick={async () => {
+                        // C'est ici que ça change !
+                        const ok = await confirm({
+                          title: "Supprimer cette génération ?",
+                          message:
+                            "Cette action est irréversible. Le texte sera définitivement effacé de l'historique.",
+                          variant: "danger",
+                        })
+
+                        if (ok) {
+                          deleteMutation.mutate(item.id)
+                        }
+                      }}
+                      disabled={deleteMutation.isPending}
+                      className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-all active:scale-95"
+                      title="Supprimer"
+                    >
+                      {/* Petit spinner si c'est cet item précis qu'on supprime (bonus UX) */}
+                      {deleteMutation.isPending &&
+                      deleteMutation.variables === item.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
                     </button>
                   </div>
                 </div>

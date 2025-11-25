@@ -9,7 +9,8 @@ import DashboardLayout from "./layouts/DashboardLayout"
 import { authClient } from "./lib/auth-client"
 import { Toaster } from "sonner"
 import { Loader2 } from "lucide-react"
-import { DashboardShell } from "./components/loaders/DashboardShell" // <--- Import
+import { DashboardShell } from "./components/loaders/DashboardShell"
+import { ConfirmDialog } from "./components/ui/confirm-dialog"
 
 export default function App() {
   const { data: session, isPending } = authClient.useSession()
@@ -34,6 +35,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Toaster position="top-right" richColors />
+      <ConfirmDialog />
 
       <Routes>
         <Route path="/" element={<LandingPage />} />
