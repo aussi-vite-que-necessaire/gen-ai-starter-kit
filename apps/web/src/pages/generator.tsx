@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query"
 import { api } from "../lib/api"
 import { Sparkles, Copy, Check } from "lucide-react"
 import { cn } from "../lib/utils"
+import { toast } from "sonner"
 
 export default function GeneratorPage() {
   const [input, setInput] = useState("")
@@ -22,6 +23,7 @@ export default function GeneratorPage() {
       navigator.clipboard.writeText(mutation.data.summary)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+      toast.success("Résumé copié dans le presse-papier !")
     }
   }
 

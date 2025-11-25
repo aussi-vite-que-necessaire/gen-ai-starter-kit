@@ -6,6 +6,7 @@ import DashboardPage from "./pages/dashboard"
 import GeneratorPage from "./pages/generator"
 import DashboardLayout from "./layouts/DashboardLayout" // <--- Import du Layout
 import { authClient } from "./lib/auth-client"
+import { Toaster } from "sonner"
 
 export default function App() {
   const { data: session, isPending } = authClient.useSession()
@@ -19,6 +20,8 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <Toaster position="top-right" richColors />
+
       <Routes>
         {/* --- ROUTES PUBLIQUES --- */}
         <Route path="/" element={<LandingPage />} />

@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query"
 import { api } from "../lib/api"
 import { authClient } from "../lib/auth-client"
-import { Clock, MessageSquare, FileText, Loader2 } from "lucide-react"
+import { FileText, Copy } from "lucide-react"
+import { Skeleton } from "../components/ui/skeleton"
+import { timeAgo } from "../lib/utils" // Ajoute l'utilitaire date
 
 // Type basique des données attendues
 type Generation = {
@@ -58,32 +60,65 @@ export default function DashboardPage() {
         </div>
 
         {isLoading ? (
-          <div className="flex h-48 items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          <div className="divide-y divide-gray-100">
+            {/* On affiche 3 faux éléments pendant le chargement */}
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="p-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-3 w-full">
+                    {/* Faux titre */}
+                    <div className="flex items-center gap-2">
+                      <Skeleton className="h-4 w-4 rounded-full" />
+                      <Skeleton className="h-4 w-1/3" />
+                    </div>
+                    {/* Faux texte (2 lignes) */}
+                    <Skeleton className="h-3 w-3/4" />
+                    <Skeleton className="h-3 w-1/2" />
+                  </div>
+                  {/* Fausse date */}
+                  <Skeleton className="h-3 w-20" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : history && history.length > 0 ? (
           <div className="divide-y divide-gray-100">
             {history.map((item) => (
               <div
                 key={item.id}
-                className="p-6 transition-colors hover:bg-gray-50"
+                className="group relative p-6 transition-all hover:bg-gray-50"
               >
                 <div className="flex items-start justify-between gap-4">
-                  <div className="space-y-1">
-                    {/* Prompt (Texte source) */}
+                  <div className="space-y-1 min-w-0 flex-1">
+                    {/* Prompt Header */}
                     <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
-                      <MessageSquare className="h-4 w-4 text-blue-500" />
-                      <span className="line-clamp-1">{item.prompt}</span>
+                      <div className="h-2 w-2 rounded-full bg-blue-500" />
+                      <span className="truncate">{item.prompt}</span>
                     </div>
-                    {/* Résultat (Extrait) */}
-                    <p className="line-clamp-2 text-sm text-gray-500">
+
+                    {/* Result Preview */}
+                    <p className="line-clamp-2 text-sm text-gray-500 font-mono bg-gray-50/50 p-1 rounded">
                       {item.result}
                     </p>
                   </div>
-                  {/* Date */}
-                  <div className="flex items-center gap-1 whitespace-nowrap text-xs text-gray-400">
-                    <Clock className="h-3 w-3" />
-                    {new Date(item.createdAt).toLocaleDateString()}
+
+                  {/* Meta & Actions */}
+                  <div className="flex flex-col items-end gap-2">
+                    <span className="text-xs text-gray-400 tabular-nums">
+                      {timeAgo(item.createdAt)}
+                    </span>
+
+                    {/* Bouton qui apparaît au survol (group-hover) */}
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(item.result)
+                        toast.success("Copié !")
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all"
+                      title="Copier le résultat"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               </div>
