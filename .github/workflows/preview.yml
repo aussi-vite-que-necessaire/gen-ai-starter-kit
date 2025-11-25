@@ -27,13 +27,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push Docker Image
+      # --- BUILD IMAGES (Tag: pr-XX) ---
+      - name: Build and Push API
         uses: docker/build-push-action@v4
         with:
-          context: .
+          context: ./apps/api
           push: true
-          tags: ghcr.io/${{ github.repository }}:pr-${{ github.event.number }}
+          tags: ghcr.io/${{ github.repository }}/api:pr-${{ github.event.number }}
 
+      - name: Build and Push Web
+        uses: docker/build-push-action@v4
+        with:
+          context: ./apps/web
+          push: true
+          tags: ghcr.io/${{ github.repository }}/web:pr-${{ github.event.number }}
+
+      # --- DEPLOY PREVIEW ---
       - name: Deploy Preview to VPS
         uses: appleboy/ssh-action@master
         with:
@@ -45,7 +54,6 @@ jobs:
 
             PR_ID="pr-${{ github.event.number }}"
             FOLDER_NAME="${{ env.PROJECT_NAME }}-$PR_ID"
-
             mkdir -p ~/apps/$FOLDER_NAME
             cd ~/apps/$FOLDER_NAME
 
@@ -53,26 +61,35 @@ jobs:
                  -o docker-compose.yml \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/docker-compose.yml
 
-            export IMAGE_NAME=ghcr.io/${{ github.repository }}:$PR_ID
-            export SERVICE_NAME=$FOLDER_NAME
-            export DOMAIN_NAME=$PR_ID.${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
-            export DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
-            export ENV_TYPE="preview-pr-${{ github.event.number }}"
+            # Définition des URLs Preview
+            export WEB_URL=$PR_ID.${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
+            export API_URL=api-$PR_ID.${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
+
+            # .env injection
+            cat <<EOF > .env
+            IMAGE_NAME_API=ghcr.io/${{ github.repository }}/api:$PR_ID
+            IMAGE_NAME_WEB=ghcr.io/${{ github.repository }}/web:$PR_ID
+            SERVICE_NAME=$FOLDER_NAME
+            ENV_TYPE=preview
+            DOMAIN_NAME_WEB=$WEB_URL
+            DOMAIN_NAME_API=$API_URL
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            POSTGRES_USER=app_user
+            POSTGRES_DB=mydb
+            EOF
 
             docker compose pull
             docker compose -p $FOLDER_NAME up -d --remove-orphans
 
-            echo "Attente de la base de données..."
             sleep 5
-
-            echo "Application des migrations..."
-            docker compose -p $FOLDER_NAME exec -T app npm run db:migrate || echo "Migrations déjà appliquées ou erreur (non bloquant)"
+            docker compose -p $FOLDER_NAME exec -T api npm run db:migrate || echo "Warning migration"
 
       - name: Comment PR URL
         uses: thollander/actions-comment-pull-request@v2
         with:
           message: |
-            🚀 **Preview Environment is ready!**
+            🚀 **Preview Ready!**
 
-            ✅ **URL:** https://pr-${{ github.event.number }}.${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
+            🎨 **Frontend:** https://pr-${{ github.event.number }}.${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
+            ⚙️ **API:** https://api-pr-${{ github.event.number }}.${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
           comment_tag: execution

@@ -26,13 +26,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push Docker Image
+      # --- BUILD API ---
+      - name: Build and Push API
         uses: docker/build-push-action@v4
         with:
-          context: .
+          context: ./apps/api
           push: true
-          tags: ghcr.io/${{ github.repository }}:latest
+          tags: ghcr.io/${{ github.repository }}/api:latest
 
+      # --- BUILD WEB ---
+      - name: Build and Push Web
+        uses: docker/build-push-action@v4
+        with:
+          context: ./apps/web
+          push: true
+          tags: ghcr.io/${{ github.repository }}/web:latest
+
+      # --- DEPLOY ---
       - name: Deploy to VPS
         uses: appleboy/ssh-action@master
         with:
@@ -40,22 +50,34 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
+            # Login Docker
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
+            # Setup Folder
             mkdir -p ~/apps/${{ env.PROJECT_NAME }}
             cd ~/apps/${{ env.PROJECT_NAME }}
 
+            # Download Docker Compose
             curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                  -o docker-compose.yml \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml
 
+            # Generate .env
             echo "Génération du fichier .env..."
-
             cat <<EOF > .env
-            IMAGE_NAME=ghcr.io/${{ github.repository }}:latest
+            # Images
+            IMAGE_NAME_API=ghcr.io/${{ github.repository }}/api:latest
+            IMAGE_NAME_WEB=ghcr.io/${{ github.repository }}/web:latest
+
+            # Config General
             SERVICE_NAME=${{ env.PROJECT_NAME }}
-            DOMAIN_NAME=${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
             ENV_TYPE=production
+
+            # Domains (Prod: app.domain / api.app.domain)
+            DOMAIN_NAME_WEB=${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
+            DOMAIN_NAME_API=api.${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
+
+            # Secrets
             DB_PASSWORD=${{ secrets.DB_PASSWORD }}
             POSTGRES_USER=app_user
             POSTGRES_DB=mydb
@@ -63,27 +85,17 @@ jobs:
 
             chmod 600 .env
 
-            docker compose rm -f app || true
-            docker compose stop app || true
-
+            # Deploy
             docker compose pull
+            docker compose up -d --remove-orphans
 
-            docker compose up -d db redis mailpit db-backup
-
+            # Healthcheck & Migrations
             echo "Attente de la base de données..."
-            for i in {1..30}; do
-              docker compose exec -T db pg_isready -U app_user -d mydb && break
-              echo "Attente de la DB... ($i/30)"
-              sleep 1
-            done
+            sleep 10
 
             echo "Application des migrations..."
-            docker compose run --rm -e DATABASE_URL="postgresql://app_user:${{ secrets.DB_PASSWORD }}@db:5432/mydb" app npm run db:migrate || {
-              echo "❌ ERREUR: Les migrations ont échoué!"
-              docker compose logs db | tail -20
+            docker compose exec -T api npm run db:migrate || {
+              echo "❌ ERREUR MIGRATIONS"
               exit 1
             }
-            echo "✅ Migrations appliquées avec succès"
-
-            echo "Démarrage de l'application..."
-            docker compose up -d
+            echo "✅ Déploiement terminé !"
