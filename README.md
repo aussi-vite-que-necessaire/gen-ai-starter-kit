@@ -1,4 +1,4 @@
-# Proof of Project - Node.js Starter Kit
+# Gen AI App - Starter Kit
 
 Stack de production complète avec CI/CD, environnements de preview (PR) et monitoring.
 
