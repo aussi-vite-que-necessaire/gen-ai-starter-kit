@@ -1,22 +1,27 @@
 {
-  "name": "proof-of-project",
+  "name": "api",
   "version": "1.0.0",
-  "main": "server.js",
-  "dependencies": {
-    "drizzle-orm": "^0.44.7",
-    "pg": "^8.11.0",
-    "redis": "^4.6.0",
-    "drizzle-kit": "^0.31.7"
-  },
+  "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev:db:up": "docker compose -f docker-compose.dev.yml up -d",
-    "dev:db:down": "docker compose -f docker-compose.dev.yml down",
-    "dev:db:logs": "docker compose -f docker-compose.dev.yml logs -f db",
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "tsx src/migrate.ts"
   },
-  "overrides": {
-    "esbuild": "^0.27.0"
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "better-auth": "^1.4.1",
+    "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.38.3",
+    "hono": "^4.6.14",
+    "pg": "^8.13.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "drizzle-kit": "^0.30.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
   }
 }

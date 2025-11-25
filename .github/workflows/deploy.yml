@@ -35,6 +35,11 @@ jobs:
           tags: ghcr.io/${{ github.repository }}/api:latest
 
       # --- BUILD WEB ---
+      # ⚠️ IMPORTANT : On injecte l'URL de prod pour que Vite l'intègre au build static
+      - name: Create Web Env for Production
+        run: |
+          echo "VITE_API_URL=https://api.${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}" > ./apps/web/.env
+
       - name: Build and Push Web
         uses: docker/build-push-action@v4
         with:
@@ -62,22 +67,39 @@ jobs:
                  -o docker-compose.yml \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml
 
-            # Generate .env
+            # Generate .env (Compatible avec ton schema Zod env.ts)
             echo "Génération du fichier .env..."
             cat <<EOF > .env
-            # Images
+            # --- CONFIG DOCKER ---
             IMAGE_NAME_API=ghcr.io/${{ github.repository }}/api:latest
             IMAGE_NAME_WEB=ghcr.io/${{ github.repository }}/web:latest
-
-            # Config General
             SERVICE_NAME=${{ env.PROJECT_NAME }}
             ENV_TYPE=production
 
-            # Domains (Prod: app.domain / api.app.domain)
+            # --- DOMAINES TRAEFIK ---
             DOMAIN_NAME_WEB=${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
             DOMAIN_NAME_API=api.${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
 
-            # Secrets
+            # --- API CONFIG (env.ts) ---
+            NODE_ENV=production
+            PORT=3000
+
+            # CORS : L'API doit accepter les requêtes venant du Front
+            FRONTEND_URL=https://${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
+
+            # Database (Format URL complet pour Drizzle)
+            DATABASE_URL=postgresql://app_user:${{ secrets.DB_PASSWORD }}@db:5432/mydb
+
+            # Redis
+            REDIS_HOST=redis
+            REDIS_PORT=6379
+
+            # --- AUTHENTIFICATION ---
+            BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}
+            # L'URL publique de l'API pour les callbacks OAuth/Emails
+            BETTER_AUTH_URL=https://api.${{ env.PROJECT_NAME }}.${{ env.BASE_DOMAIN }}
+
+            # --- INFRA (Variables pour conteneurs db/backup) ---
             DB_PASSWORD=${{ secrets.DB_PASSWORD }}
             POSTGRES_USER=app_user
             POSTGRES_DB=mydb
