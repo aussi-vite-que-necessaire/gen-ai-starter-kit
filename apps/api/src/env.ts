@@ -9,7 +9,6 @@ const envSchema = z.object({
     .enum(["development", "production", "test"])
     .default("development"),
 
-  // CORRECTION ICI : z.coerce.number() + default(3000) (sans guillemets)
   PORT: z.coerce.number().default(3000),
 
   // URLs
@@ -20,8 +19,11 @@ const envSchema = z.object({
 
   // Redis
   REDIS_HOST: z.string(),
-  // CORRECTION ICI
   REDIS_PORT: z.coerce.number().default(6379),
+
+  // Auth
+  BETTER_AUTH_SECRET: z.string(),
+  BETTER_AUTH_URL: z.string().url(),
 })
 
 const parsedEnv = envSchema.safeParse(process.env)
