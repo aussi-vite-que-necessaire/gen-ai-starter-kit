@@ -3,10 +3,12 @@ import { Outlet, Link, useLocation, useNavigate } from "react-router-dom"
 import { LayoutDashboard, Sparkles, LogOut, Menu, X, Bot } from "lucide-react"
 import { cn } from "../lib/utils"
 import { authClient } from "../lib/auth-client"
+import { Settings } from "lucide-react"
 
 const navigation = [
   { name: "Vue d'ensemble", href: "/dashboard", icon: LayoutDashboard },
   { name: "Générateur IA", href: "/dashboard/generator", icon: Sparkles },
+  { name: "Paramètres", href: "/dashboard/settings", icon: Settings },
 ]
 
 export default function DashboardLayout() {

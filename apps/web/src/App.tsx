@@ -4,26 +4,38 @@ import RegisterPage from "./pages/register"
 import LandingPage from "./pages/landing"
 import DashboardPage from "./pages/dashboard"
 import GeneratorPage from "./pages/generator"
-import DashboardLayout from "./layouts/DashboardLayout" // <--- Import du Layout
+import SettingsPage from "./pages/settings" // Import
+import DashboardLayout from "./layouts/DashboardLayout"
 import { authClient } from "./lib/auth-client"
 import { Toaster } from "sonner"
+import { Loader2 } from "lucide-react"
+import { DashboardShell } from "./components/loaders/DashboardShell" // <--- Import
 
 export default function App() {
   const { data: session, isPending } = authClient.useSession()
 
-  if (isPending)
+  // --- LOGIQUE DE CHARGEMENT INTELLIGENTE ---
+  if (isPending) {
+    // Si on est sur une route dashboard, on affiche déjà la structure
+    // pour éviter l'effet "flash blanc" puis "re-flash layout"
+    if (window.location.pathname.startsWith("/dashboard")) {
+      return <DashboardShell />
+    }
+
+    // Sinon (Login/Home), spinner classique centré
     return (
-      <div className="flex h-screen items-center justify-center text-gray-500">
-        Chargement...
+      <div className="flex h-screen w-screen items-center justify-center bg-gray-50">
+        <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
       </div>
     )
+  }
+  // -------------------------------------------
 
   return (
     <BrowserRouter>
       <Toaster position="top-right" richColors />
 
       <Routes>
-        {/* --- ROUTES PUBLIQUES --- */}
         <Route path="/" element={<LandingPage />} />
 
         <Route
@@ -35,19 +47,13 @@ export default function App() {
           element={!session ? <RegisterPage /> : <Navigate to="/dashboard" />}
         />
 
-        {/* --- ROUTES PRIVÉES (DASHBOARD) --- */}
-        {/* 
-            C'est ICI que la magie opère. 
-            On dit : "Pour toutes les routes à l'intérieur, utilise d'abord DashboardLayout".
-            Le Layout affichera la Sidebar, puis injectera la page enfant dans <Outlet />.
-        */}
         {session ? (
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/dashboard/generator" element={<GeneratorPage />} />
+            <Route path="/dashboard/settings" element={<SettingsPage />} />
           </Route>
         ) : (
-          // Sécurité : Redirection si non connecté
           <Route path="/dashboard/*" element={<Navigate to="/login" />} />
         )}
       </Routes>
