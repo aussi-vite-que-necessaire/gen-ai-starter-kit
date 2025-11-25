@@ -4,9 +4,6 @@ COPY package*.json ./
 RUN npm install
 COPY . .
 
-# Génération SQL (si besoin au build)
-RUN npx drizzle-kit generate
-
 EXPOSE 3000
 
 # On utilise tsx pour lancer le code TS directement en prod (performant sur Node 22)
