@@ -1,34 +1,51 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useQuery } from "@tanstack/react-query"
+import axios from "axios"
+import "./App.css"
 
 function App() {
-  const [count, setCount] = useState(0)
+  // Récupération de l'URL depuis le .env
+  const API_URL = import.meta.env.VITE_API_URL
+
+  // Utilisation de TanStack Query pour fetcher
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["hello"],
+    queryFn: async () => {
+      const response = await axios.get(`${API_URL}/`)
+      return response.data // { message: "Hello..." }
+    },
+  })
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+    <div className="card">
+      <h1>Gen AI Starter Kit 🚀</h1>
+
+      <div
+        style={{
+          padding: "20px",
+          border: "1px solid #444",
+          borderRadius: "8px",
+          marginTop: "20px",
+        }}
+      >
+        <h2>Status API :</h2>
+
+        {isLoading && <p>Chargement...</p>}
+
+        {error && (
+          <p style={{ color: "red" }}>
+            Erreur : Impossible de contacter l'API ({API_URL})
+          </p>
+        )}
+
+        {data && (
+          <p
+            style={{ color: "#4ade80", fontSize: "1.2em", fontWeight: "bold" }}
+          >
+            ✅ Réponse : {data.message}
+          </p>
+        )}
       </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+    </div>
   )
 }
 
