@@ -4,6 +4,7 @@ import { api } from "../lib/api"
 import { Sparkles, Copy, Check } from "lucide-react"
 import { cn } from "../lib/utils"
 import { toast } from "sonner"
+import ReactMarkdown from "react-markdown"
 
 export default function GeneratorPage() {
   const [input, setInput] = useState("")
@@ -103,10 +104,11 @@ export default function GeneratorPage() {
               )}
             </div>
 
-            <div className="flex-1 rounded-lg bg-gray-50 p-4 text-sm leading-relaxed text-gray-700 border border-gray-100">
+            <div className="flex-1 rounded-lg bg-gray-50 p-6 text-sm leading-relaxed text-gray-700 border border-gray-100 overflow-y-auto max-h-[500px]">
               {mutation.data?.summary ? (
-                <div className="whitespace-pre-wrap animate-in fade-in duration-500">
-                  {mutation.data.summary}
+                // La classe 'prose' active le style auto pour h1, h2, ul, bold, etc.
+                <div className="prose prose-sm max-w-none prose-blue prose-headings:font-semibold prose-p:my-2">
+                  <ReactMarkdown>{mutation.data.summary}</ReactMarkdown>
                 </div>
               ) : (
                 <div className="flex h-full items-center justify-center text-gray-400 italic">
