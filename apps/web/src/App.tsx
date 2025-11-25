@@ -1,52 +1,139 @@
-import { useQuery } from "@tanstack/react-query"
-import axios from "axios"
+import { useState } from "react"
+import { authClient } from "./lib/auth-client"
 import "./App.css"
 
-function App() {
-  // Récupération de l'URL depuis le .env
-  const API_URL = import.meta.env.VITE_API_URL
+export default function App() {
+  // Hook magique qui récupère la session et l'état de chargement
+  const { data: session, isPending, error } = authClient.useSession()
 
-  // Utilisation de TanStack Query pour fetcher
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["hello"],
-    queryFn: async () => {
-      const response = await axios.get(`${API_URL}/`)
-      return response.data // { message: "Hello..." }
-    },
-  })
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [name, setName] = useState("")
+  const [isLoginView, setIsLoginView] = useState(true)
 
+  // Gestion Inscription
+  const handleSignUp = async () => {
+    await authClient.signUp.email(
+      {
+        email,
+        password,
+        name,
+      },
+      {
+        onRequest: () => console.log("Sign up starting..."),
+        onSuccess: () => console.log("Sign up success!"),
+        onError: (ctx) => alert(ctx.error.message),
+      }
+    )
+  }
+
+  // Gestion Connexion
+  const handleSignIn = async () => {
+    await authClient.signIn.email(
+      {
+        email,
+        password,
+      },
+      {
+        onSuccess: () => console.log("Sign in success!"),
+        onError: (ctx) => alert(ctx.error.message),
+      }
+    )
+  }
+
+  // Gestion Déconnexion
+  const handleSignOut = async () => {
+    await authClient.signOut()
+  }
+
+  if (isPending) return <div className="card">Chargement de la session...</div>
+
+  // --- VUE UTILISATEUR CONNECTÉ ---
+  if (session) {
+    return (
+      <div className="card">
+        <h1>Bienvenue, {session.user.name} ! 👋</h1>
+        <p>Email: {session.user.email}</p>
+        <p>ID: {session.user.id}</p>
+
+        <div
+          style={{
+            marginTop: "20px",
+            padding: "10px",
+            background: "#333",
+            borderRadius: "8px",
+          }}
+        >
+          <code>Session active via Secure Cookie 🍪</code>
+        </div>
+
+        <button
+          onClick={handleSignOut}
+          style={{ marginTop: "20px", background: "#ef4444" }}
+        >
+          Se déconnecter
+        </button>
+      </div>
+    )
+  }
+
+  // --- VUE LOGIN / REGISTER ---
   return (
     <div className="card">
-      <h1>Gen AI Starter Kit 🚀</h1>
+      <h1>{isLoginView ? "Connexion" : "Inscription"} 🔐</h1>
 
       <div
         style={{
-          padding: "20px",
-          border: "1px solid #444",
-          borderRadius: "8px",
-          marginTop: "20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "10px",
+          width: "300px",
+          margin: "0 auto",
         }}
       >
-        <h2>Status API :</h2>
-
-        {isLoading && <p>Chargement...</p>}
-
-        {error && (
-          <p style={{ color: "red" }}>
-            Erreur : Impossible de contacter l'API ({API_URL})
-          </p>
+        {!isLoginView && (
+          <input
+            type="text"
+            placeholder="Nom complet"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            style={{ padding: "10px" }}
+          />
         )}
 
-        {data && (
-          <p
-            style={{ color: "#4ade80", fontSize: "1.2em", fontWeight: "bold" }}
-          >
-            ✅ Réponse : {data.message}
-          </p>
-        )}
+        <input
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          style={{ padding: "10px" }}
+        />
+
+        <input
+          type="password"
+          placeholder="Mot de passe"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          style={{ padding: "10px" }}
+        />
+
+        <button onClick={isLoginView ? handleSignIn : handleSignUp}>
+          {isLoginView ? "Se connecter" : "S'inscrire"}
+        </button>
+
+        <p
+          style={{
+            cursor: "pointer",
+            textDecoration: "underline",
+            fontSize: "0.9em",
+          }}
+          onClick={() => setIsLoginView(!isLoginView)}
+        >
+          {isLoginView
+            ? "Pas de compte ? Créer un compte"
+            : "Déjà un compte ? Se connecter"}
+        </p>
       </div>
     </div>
   )
 }
-
-export default App
