@@ -3,7 +3,7 @@ import { api } from "../lib/api"
 import { authClient } from "../lib/auth-client"
 import { FileText, Copy, MessageSquare, Clock } from "lucide-react"
 import { Skeleton } from "../components/ui/skeleton"
-import { timeAgo, cn } from "../lib/utils"
+import { timeAgo } from "../lib/utils"
 import { toast } from "sonner"
 
 type Generation = {
