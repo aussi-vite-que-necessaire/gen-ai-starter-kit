@@ -45,6 +45,8 @@ npm start
 
 Le workflow est entièrement automatisé via GitHub Actions.
 
+> **Note :** Les environnements de preview sont créés automatiquement pour chaque PR.
+
 - **Branche `main`** : Déploiement automatique en production.
 - **Pull Requests** : Création d'un environnement éphémère (`https://pr-X.proof-of-project...`) avec sa propre DB isolée. Suppression automatique à la fermeture de la PR.
 
