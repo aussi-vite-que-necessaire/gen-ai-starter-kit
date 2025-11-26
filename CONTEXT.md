@@ -1,10 +1,4 @@
-C'est la meilleure chose à faire. Avec ce document, tu pourras ouvrir une nouvelle session avec Claude, ChatGPT ou Cursor dans 3 mois, copier-coller ce bloc, et l'IA saura **exactement** comment coder, quelle architecture respecter et quelle est la philosophie du projet.
-
-Voici le **Master Context V3**. Sauvegarde-le dans un fichier `PROJECT_CONTEXT.md` à la racine de ton projet.
-
----
-
-# 📘 GEN AI STARTER KIT - MASTER CONTEXT (V3)
+# 📘 GEN AI STARTER KIT - MASTER CONTEXT (V4)
 
 Ce document décrit l'état technique, l'architecture et les règles de développement du projet **Gen AI Starter Kit**. Il sert de référence unique pour toute IA ou développeur rejoignant le projet.
 
@@ -13,10 +7,10 @@ Ce document décrit l'état technique, l'architecture et les règles de dévelop
 ## 1. Philosophie & Principes Directeurs
 
 - **Clean Architecture Stricte (Backend) :** Isolation totale du code métier (`core`) vis-à-vis des frameworks et bases de données (`infra`, `interface`).
-- **TDD First (Test Driven Development) :** On écrit le test du Use Case **avant** l'implémentation. Pas de code métier sans test.
-- **Approche Fonctionnelle :** Pas de classes "Service" lourdes. On utilise le **Factory Pattern** pour l'injection de dépendances (voir section Patterns).
-- **Raw Tailwind (Frontend) :** Pas de librairies UI complexes (type Shadcn) qui créent des conflits. On utilise Tailwind CSS natif + `lucide-react` + `cn()` utility.
-- **Simplicité & Robustesse :** On privilégie un code lisible et explicite. Pas de "magie" cachée.
+- **Workflow First :** Tout processus long ou complexe (Génération IA) est modélisé sous forme de Workflow asynchrone, résilient et observable.
+- **TDD First :** Pas de code métier sans test.
+- **Approche Fonctionnelle :** Utilisation de Factory Patterns et de Closures. Pas de Classes Service lourdes.
+- **Raw Tailwind (Frontend) :** Pas de lib UI complexe. Tailwind CSS natif + `lucide-react` + `cn()`.
 
 ---
 
@@ -25,160 +19,131 @@ Ce document décrit l'état technique, l'architecture et les règles de dévelop
 ### 🏗 Infrastructure
 
 - **Runtime :** Node.js 22+ (ESM).
-- **Containerisation :** Docker & Docker Compose (Dev & Prod).
-- **Proxy/SSL :** Traefik v3.
-- **CI/CD :** GitHub Actions (Preview envs & Production).
-- **Secrets :** Gestion via `.env` en local et GitHub Secrets/Docker Env en prod.
+- **Containerisation :** Docker & Docker Compose (Postgres + Redis).
+- **Queueing :** Redis + BullMQ (Gestion des jobs asynchrones).
+- **CI/CD :** GitHub Actions.
 
 ### 🔙 Backend (`apps/api`)
 
-- **Framework :** Hono (Standards Web, léger).
-- **Validation :** Zod (Validation stricte des Inputs et Variables d'Env).
-- **Database :** PostgreSQL 15.
-- **ORM :** Drizzle ORM (Type-safe, SQL-like).
-- **Testing :** Vitest (Rapide, compatible Jest).
+- **Framework :** Hono.
+- **Database :** PostgreSQL 15 via Drizzle ORM.
+- **Validation :** Zod.
+- **Testing :** Vitest.
 - **Auth :** Better-Auth.
-- **AI :** OpenAI SDK (via Adapter).
+- **Workflow Engine :** Moteur Custom sur BullMQ (voir section Architecture).
 
 ### 🎨 Frontend (`apps/web`)
 
 - **Framework :** React + Vite + TypeScript.
-- **State Server :** TanStack Query (React Query).
-- **HTTP Client :** Axios (Configuré avec Interceptors).
-- **Routing :** React Router DOM v6 (Nested Layouts).
-- **Styling :** Tailwind CSS + Typography plugin.
-- **Markdown :** `react-markdown`.
-- **UX :** `sonner` (Toasts).
+- **State Server :** TanStack Query.
+- **Styling :** Tailwind CSS.
 
 ---
 
 ## 3. Architecture Détaillée (Backend)
 
-Le backend suit une architecture hexagonale simplifiée en 3 couches :
+Architecture hexagonale en 3 couches + Moteur de Workflow :
 
 ```
 apps/api/src/
-├── core/                # 🧠 DOMAIN (Zéro dépendance technique)
+├── core/                # 🧠 DOMAIN
 │   ├── entities/        # Types TS & Zod Schemas
-│   ├── ports/           # Interfaces (Contrats) pour l'Infra
-│   ├── errors/          # Erreurs métier custom
-│   └── use-cases/       # Logique métier pure + Tests Unitaires
+│   ├── ports/           # Interfaces (Contrats)
+│   ├── use-cases/       # Logique métier unitaire
+│   └── workflows/       # ⚡ Définitions des Workflows (Orchestration)
+│       ├── types.ts     # Grammaire du moteur
+│       └── registry.ts  # Map des workflows actifs
 │
-├── infra/               # 🔌 ADAPTERS (Implémentations)
-│   ├── adapters/        # Implémentation des Ports (OpenAI, Drizzle...)
-│   ├── db/              # Schema Drizzle & Config
+├── infra/               # 🔌 ADAPTERS
+│   ├── adapters/        # BullMQWorkflowEngine, OpenAI...
+│   ├── db/              # Schema Drizzle (workflow_run, workflow_step...)
 │   └── auth.ts          # Config Better-Auth
 │
-└── interface/           # 🗣️ DRIVERS (Points d'entrée)
-    ├── http/            # Serveur Hono, Routes, Middlewares
-    └── env.ts           # Validation Environment (Zod)
-```
-
-### 🔑 Pattern d'Injection (Factory Function)
-
-Nous n'utilisons pas de conteneur DI complexe. L'injection se fait manuellement via des closures.
-
-**Exemple de Use Case :**
-
-```typescript
-// 1. Définition du type
-type MyUseCase = (input: string) => Promise<Result>
-
-// 2. Factory (Reçoit les Ports/Adapters)
-export const makeMyUseCase = (repo: Repository, ai: AIProvider): MyUseCase => {
-  // 3. Retourne la fonction métier (Closure)
-  return async (input) => {
-    // Logique pure...
-    return result
-  }
-}
-```
-
-**Exemple d'Assemblage (`routes/xxx.ts`) :**
-
-```typescript
-const useCase = makeMyUseCase(dbAdapter, openaiAdapter) // Injection
-const result = await useCase("input") // Exécution
+└── interface/           # 🗣️ DRIVERS
+    └── http/            # Serveur Hono
 ```
 
 ---
 
-## 4. Architecture Détaillée (Frontend)
+## 4. Le Moteur de Workflow (Custom Engine)
 
-### Structure
+Nous utilisons un moteur maison basé sur BullMQ pour orchestrer les tâches IA.
 
+### Principes
+
+1.  **Code-First :** Les workflows sont définis en TypeScript dans `core/workflows/`.
+2.  **Stateful :** L'état est persisté en DB (`workflow_run`, `workflow_step`) à chaque étape.
+3.  **Human-in-the-loop :** Capacité de mettre un workflow en pause (`WAITING_FOR_INPUT`) indéfiniment.
+
+### Grammaire (Comment écrire un Workflow)
+
+```typescript
+// Exemple : core/workflows/my-workflow.ts
+export const myWorkflow = defineWorkflow({
+  id: "my-process",
+  initialStep: "step-1",
+  steps: {
+    "step-1": {
+      next: "step-2",
+      run: async (ctx) => {
+        // Logique pure ou appel de Use Case
+        return step({ someData: "hello" })
+      },
+    },
+    "step-2": {
+      next: null, // Fin
+      run: async (ctx) => {
+        // Accès à l'historique
+        const prev = ctx.history["step-1"]
+        return step({ result: prev.someData + " world" })
+      },
+    },
+  },
+})
 ```
-apps/web/src/
-├── components/   # Composants réutilisables (Button, Card...)
-├── layouts/      # Layouts (DashboardLayout avec Sidebar fixe)
-├── lib/          # Configs (api.ts, auth-client.ts, utils.ts)
-├── pages/        # Écrans complets (Dashboard, Generator, Login)
-└── App.tsx       # Routing & Providers
-```
 
-### Règles de Routing
+### Primitives Disponibles
 
-- Les routes protégées sont imbriquées dans `<DashboardLayout />`.
-- Utilisation de `<Outlet />` pour le rendu des pages enfants.
-- Redirection automatique Login <-> Dashboard selon l'état de session.
-
-### Règles d'API
-
-- `api.ts` : Instance Axios configurée. Pointe toujours vers `/api`. Gère le refresh token/logout sur 401.
-- `auth-client.ts` : Instance Better-Auth.
+- `step(payload)` : Termine l'étape avec succès.
+- `Workflow.spawn(name, inputs)` : Lance des sous-workflows en parallèle (Pattern Fan-out).
+- `Workflow.waitForEvent(name)` : Met le workflow en pause jusqu'à appel API (Validation humaine).
 
 ---
 
 ## 5. Modèle de Données (Database)
 
-**Table `user` (Gérée par Better-Auth)**
+**Tables Système Workflow**
 
-- `id`, `email`, `name`, `image`, ...
+- `workflow_run` : L'instance globale. Contient le `context` (mémoire JSON) et le `status`.
+- `workflow_step` : L'historique d'exécution. Logs des inputs/outputs par étape.
 
-**Table `generation` (Métier)**
+**Tables Métier**
 
-- `id` (UUID)
-- `userId` (FK -> user.id)
-- `prompt` (Text - Input utilisateur)
-- `result` (Text - Output IA)
-- `createdAt` (Timestamp)
+- `user` (Better-Auth).
+- `generation` (Résultats finaux).
 
 ---
 
-## 6. Workflow de Développement (Guide)
+## 6. Workflow de Développement
 
-### Comment ajouter une Feature Backend ?
+### Comment ajouter une Feature "Complexe" (Workflow) ?
 
-1.  **Port** : Définir l'interface dans `core/ports`.
-2.  **Test (RED)** : Créer `core/use-cases/my-feature.test.ts`. Mocker le port.
-3.  **Use Case (GREEN)** : Implémenter la logique dans `core/use-cases/my-feature.ts`.
-4.  **Adapter** : Implémenter l'interface dans `infra/` (ex: appel DB ou API tierce).
-5.  **Route** : Créer la route Hono dans `interface/http/routes/`, injecter l'adapter, valider l'input avec Zod.
-
-### Comment ajouter une Page Frontend ?
-
-1.  **API Call** : Utiliser `api.post()` ou `api.get()` dans `pages/my-page.tsx`.
-2.  **State** : Wrapper l'appel dans `useMutation` (Action) ou `useQuery` (Lecture).
-3.  **UI** : Construire l'interface avec Tailwind. Utiliser `react-markdown` si texte riche.
-4.  **Routing** : Ajouter la route dans `App.tsx` (dans le bloc DashboardLayout) et le lien dans la Sidebar (`layouts/DashboardLayout.tsx`).
+1.  **Use Cases :** Créer les briques unitaires (ex: `GenerateImage`, `SaveData`) dans `core/use-cases`.
+2.  **Definition :** Assembler ces briques dans un fichier `core/workflows/xxx.workflow.ts`.
+3.  **Registry :** Enregistrer le workflow dans `core/workflows/registry.ts`.
+4.  **Trigger :** Appeler `workflowEngine.startWorkflow('xxx', input)` depuis une route API.
 
 ---
 
-## 7. Variables d'Environnement
+## 7. Variables d'Environnement (Nouveau)
 
-**Local (`apps/api/.env`) :**
+Ajout de Redis pour le moteur :
 
 ```env
-NODE_ENV=development
-DATABASE_URL=postgresql://postgres:password@localhost:5432/webapp
-REDIS_URL=redis://localhost:6379
-BETTER_AUTH_SECRET=...
-BETTER_AUTH_URL=http://localhost:3000
-OPENAI_API_KEY=sk-proj-...  <-- CRITIQUE
+# ... existants
+REDIS_HOST=localhost
+REDIS_PORT=6379
 ```
-
-**Docker / Prod :**
-Les variables doivent être passées via `docker-compose.yml` et GitHub Secrets.
 
 ---
 
@@ -186,28 +151,29 @@ Les variables doivent être passées via `docker-compose.yml` et GitHub Secrets.
 
 **✅ Fonctionnel (Done) :**
 
-- Auth complète (Email/Password).
-- Génération de résumé IA (Connecté OpenAI).
-- Persistance en DB (Table `generation`).
-- Dashboard avec Historique & Markdown rendering.
-- UX (Toasts, Loading states, Sidebar responsive).
+- Auth complète.
+- Architecture Hexagonale en place.
+- **Moteur de Workflow V1 (BullMQ + Persistence).**
+- Support des tâches séquentielles.
 
 **🚀 À Faire (Next Steps) :**
 
-1.  **Sécurité :** Rate Limiting (Redis) sur la route `/api/ai/*`.
-2.  **Async :** Déplacer le traitement IA dans un Worker BullMQ (pour les timeouts > 30s).
-3.  **Monétisation :** Intégration Stripe & Gestion de crédits.
+1.  **Implémentation Métier :** Créer le vrai workflow "Landing Page Generator" (Brief -> Structure -> Contenu).
+2.  **Frontend Workflow :** Afficher la barre de progression en temps réel (Polling sur `workflow_step`).
+3.  **Human Validation :** Implémenter le `waitForEvent` pour la validation client.
+4.  **Flows :** Gérer le `spawn` pour générer les images en parallèle.
 
 ---
 
 ## 9. Commandes Utiles
 
-- **Lancer la stack (Local) :**
-  - Terminal 1 (Infra) : `docker compose -f docker-compose.dev.yml up -d`
-  - Terminal 2 (API) : `cd apps/api && npm run dev`
-  - Terminal 3 (Web) : `cd apps/web && npm run dev`
-- **Tests Backend :** `cd apps/api && npm test`
-- **Migration DB :**
-  - Générer : `npm run db:generate`
-  - Appliquer (Local) : `npx drizzle-kit push`
-  - Voir les données : `npx drizzle-kit studio`
+- **Lancer la stack (Infra) :** `docker compose -f docker-compose.dev.yml up -d` (Lance Postgres ET Redis).
+- **Lancer l'API + Worker :** `cd apps/api && npm run dev`.
+- **Voir les jobs Redis (Optionnel) :** Utiliser un outil comme "BullMQ Dashboard" ou "RedisInsight".
+
+```
+
+***
+
+Et voilà ! Tu es paré pour la suite. La prochaine fois qu'on ouvre une session, l'IA saura exactement comment fonctionne ton moteur et pourra t'aider à coder le workflow "Landing Page" complexe sans réinventer la roue. 🔥
+```

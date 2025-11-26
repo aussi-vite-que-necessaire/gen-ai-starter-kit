@@ -1,35 +1,31 @@
 import { serve } from "@hono/node-server"
-import { Hono } from "hono"
-import { cors } from "hono/cors"
-import { logger } from "hono/logger"
 import { env } from "./env"
-import { auth } from "./infra/auth" // Import de l'auth
-import aiRouter from "./interface/http/routes/ai"
+import { db } from "./infra/db"
+import { createApp } from "./app"
+import { BullMQWorkflowEngine } from "./infra/adapters/bullmq-workflow"
+import { loadWorkflows } from "./core/workflows/loader"
+// 1. Initialiser l'Infra Async
+const redisUrl = `redis://${env.REDIS_HOST}:${env.REDIS_PORT}`
+export const workflowEngine = new BullMQWorkflowEngine(redisUrl, db)
 
-const app = new Hono()
+// 2. Initialiser l'App Web
+const app = createApp()
 
-// 1. CORS : Très important pour l'Auth (cookies)
-app.use(
-  "*",
-  cors({
-    origin: env.FRONTEND_URL,
-    allowHeaders: ["Content-Type", "Authorization"],
-    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    exposeHeaders: ["Content-Length"],
-    maxAge: 600,
-    credentials: true,
-  })
-)
+// 3. Lancer le Worker (Optionnel : pourrait être dans un process séparé)
+loadWorkflows()
 
-app.use("*", logger())
+const worker = workflowEngine.createWorker()
+console.log("🚀 Workflow Worker started")
 
-app.on(["POST", "GET"], "/api/auth/**", (c) => {
-  return auth.handler(c.req.raw)
-})
-
-app.route("/api/ai", aiRouter)
-
+// 4. Lancer le Serveur HTTP
+console.log(`🚀 Server running on port ${env.PORT}`)
 serve({
   fetch: app.fetch,
   port: env.PORT,
+})
+
+// Graceful Shutdown
+process.on("SIGTERM", async () => {
+  await worker.close()
+  process.exit(0)
 })

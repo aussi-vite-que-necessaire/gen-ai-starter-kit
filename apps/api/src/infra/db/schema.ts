@@ -1,4 +1,13 @@
-import { pgTable, text, timestamp, boolean, uuid } from "drizzle-orm/pg-core"
+import {
+  pgTable,
+  text,
+  timestamp,
+  boolean,
+  uuid,
+  pgEnum,
+  index,
+  jsonb,
+} from "drizzle-orm/pg-core"
 
 // --- TABLES BETTER-AUTH ---
 
@@ -62,3 +71,64 @@ export const generation = pgTable("generation", {
   result: text("result").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 })
+
+// Enum pour les statuts
+export const workflowStatusEnum = pgEnum("workflow_status", [
+  "PENDING",
+  "RUNNING",
+  "WAITING_FOR_INPUT", // Pause (Humain)
+  "WAITING_CHILDREN", // Pause (Sous-workflows)
+  "COMPLETED",
+  "FAILED",
+])
+
+export const workflowRuns = pgTable(
+  "workflow_run",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: text("tenant_id").references(() => user.id), // Optionnel: pour lier à un user
+
+    workflowId: text("workflow_id").notNull(), // ex: "landing-page-generator"
+    status: workflowStatusEnum("status").default("PENDING").notNull(),
+
+    // Pour le pattern Parent/Child
+    parentId: uuid("parent_id"),
+    parentStepId: text("parent_step_id"), // L'étape du parent qui a spawn
+
+    // Mémoire globale du workflow (Context)
+    context: jsonb("context").default({}),
+
+    input: jsonb("input").notNull(), // L'input initial
+    result: jsonb("result"), // Le résultat final si fini
+    error: text("error"), // Message d'erreur si failed
+
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (t) => ({
+    parentIdx: index("workflow_run_parent_idx").on(t.parentId),
+  })
+)
+
+export const workflowSteps = pgTable(
+  "workflow_step",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    runId: uuid("run_id")
+      .references(() => workflowRuns.id)
+      .notNull(),
+
+    stepId: text("step_id").notNull(), // ex: "generate-copy"
+    status: workflowStatusEnum("status").default("PENDING").notNull(),
+
+    input: jsonb("input"), // Ce qui est rentré dans l'étape
+    output: jsonb("output"), // Ce qui est sorti de l'étape
+    error: text("error"),
+
+    startedAt: timestamp("started_at"),
+    completedAt: timestamp("completed_at"),
+  },
+  (t) => ({
+    runIdx: index("workflow_step_run_idx").on(t.runId),
+  })
+)

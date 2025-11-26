@@ -1,80 +1,39 @@
-// apps/api/src/interface/http/routes/ai.ts
 import { Hono } from "hono"
 import { z } from "zod"
 import { zValidator } from "@hono/zod-validator"
-import { auth } from "../../../infra/auth" // Ton instance Better-Auth
-import { openaiAdapter } from "../../../infra/ai/openai.adapter"
-import { generationAdapter } from "../../../infra/db/generation.adapter" // <--- Adapter DB
-import { makeGenerateSummary } from "../../../core/use-cases/generate-summary"
-import { makeListHistory } from "../../../core/use-cases/list-history"
-import { makeDeleteGeneration } from "../../../core/use-cases/delete-generation"
+import { requireAuth } from "../middlewares/auth.middleware" // Import du middleware
+import { useCases } from "../../../container" // Import du container
 
-const app = new Hono()
+// On type l'application pour qu'elle connaisse "c.var.user"
+const app = new Hono<{ Variables: { user: any } }>()
 
-// --- COMPOSITION ROOT ---
-// On injecte MAINTENANT les 2 dépendances : IA + DB
-// --- COMPOSITION ROOT ---
-const generateSummary = makeGenerateSummary(openaiAdapter, generationAdapter)
-const listHistory = makeListHistory(generationAdapter)
-const deleteGeneration = makeDeleteGeneration(generationAdapter)
+// Tous les endpoints ci-dessous nécessitent l'auth
+app.use("*", requireAuth)
 
-// Schema de validation
 const generateSchema = z.object({
-  text: z.string().min(10, "Le texte doit contenir au moins 10 caractères"),
+  text: z.string().min(10, "Min 10 chars"),
 })
 
 app.post("/summary", zValidator("json", generateSchema), async (c) => {
   const { text } = c.req.valid("json")
-
-  // 1. Récupération de la session utilisateur
-  // Better-Auth permet de récupérer la session depuis la requête Hono
-  const session = await auth.api.getSession({ headers: c.req.raw.headers })
-
-  if (!session) {
-    return c.json({ error: "Unauthorized" }, 401)
-  }
+  const user = c.var.user // Dispo grâce au middleware !
 
   try {
-    // 2. Exécution du Use Case (avec le userId de la session)
-    const result = await generateSummary(text, session.user.id)
-
-    return c.json({
-      success: true,
-      summary: result,
-    })
+    const result = await useCases.generateSummary(text, user.id)
+    return c.json({ success: true, summary: result })
   } catch (error: any) {
-    console.error(error)
-    return c.json(
-      {
-        success: false,
-        error: error.message,
-      },
-      400
-    )
+    return c.json({ success: false, error: error.message }, 400)
   }
 })
 
-// --- NOUVELLE ROUTE GET ---
 app.get("/history", async (c) => {
-  // 1. Auth
-  const session = await auth.api.getSession({ headers: c.req.raw.headers })
-  if (!session) return c.json({ error: "Unauthorized" }, 401)
-
-  // 2. Use Case
-  const history = await listHistory(session.user.id)
-
-  // 3. Response
+  const history = await useCases.listHistory(c.var.user.id)
   return c.json({ history })
 })
 
 app.delete("/history/:id", async (c) => {
-  const session = await auth.api.getSession({ headers: c.req.raw.headers })
-  if (!session) return c.json({ error: "Unauthorized" }, 401)
-
-  const id = c.req.param("id") // Récupère l'ID dans l'URL
-
-  await deleteGeneration(id, session.user.id)
-
+  const id = c.req.param("id")
+  await useCases.deleteGeneration(id, c.var.user.id)
   return c.json({ success: true })
 })
 
