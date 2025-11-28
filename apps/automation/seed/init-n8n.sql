@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict MsTVju2HknkN4QvZK5zdoislkmVIQYsd8aOubgZwdS1TLq3dTwG3RDb1hyB3zhi
+\restrict fcXF2oY4UYkeAxmlBxXZi0Fw8UnmNi22yTyMgwjO7YG527eXdZnVSi4jgtdfz8K
 
 -- Dumped from database version 15.15
 -- Dumped by pg_dump version 15.15
@@ -1608,6 +1608,7 @@ COPY public.chat_hub_sessions (id, title, "ownerId", "lastMessageAt", "credentia
 --
 
 COPY public.credentials_entity (name, data, type, "createdAt", "updatedAt", id, "isManaged") FROM stdin;
+OpenAi account	U2FsdGVkX18tz8g2X2aRaBMPpo3zNxlupYfG6/hLXbzfqQ797k3kL6Q/92jxggHr	openAiApi	2025-11-28 19:53:45.645+00	2025-11-28 19:53:45.643+00	TvAs1NDU7UC0bcPO	f
 \.
 
 
@@ -2510,6 +2511,7 @@ userManagement.isInstanceOwnerSetUp	true	t
 --
 
 COPY public.shared_credentials ("credentialsId", "projectId", role, "createdAt", "updatedAt") FROM stdin;
+TvAs1NDU7UC0bcPO	ZTDiQSKWAWT8WeBL	credential:owner	2025-11-28 19:53:45.645+00	2025-11-28 19:53:45.645+00
 \.
 
 
@@ -3873,5 +3875,5 @@ ALTER TABLE ONLY public.workflows_tags
 -- PostgreSQL database dump complete
 --
 
-\unrestrict MsTVju2HknkN4QvZK5zdoislkmVIQYsd8aOubgZwdS1TLq3dTwG3RDb1hyB3zhi
+\unrestrict fcXF2oY4UYkeAxmlBxXZi0Fw8UnmNi22yTyMgwjO7YG527eXdZnVSi4jgtdfz8K
 
