@@ -66,13 +66,22 @@ jobs:
             # Récupération de la variable minuscule
             REPO_LOWER="${{ env.REPO_LOWER }}"
 
+            # 1. Création dossier
+            mkdir -p apps/automation/seed
+
+            # 2. Téléchargements
             curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                  -o docker-compose.yml \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml
 
             curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                 -o init-n8n.sql \
+                 -o apps/automation/seed/init-n8n.sql \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/main/apps/automation/seed/init-n8n.sql
+                 
+            # AJOUTE BIEN CELUI-CI :
+            curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                 -o apps/automation/seed/create-databases.sql \
+                 -L https://raw.githubusercontent.com/${{ github.repository }}/main/apps/automation/seed/create-databases.sql
 
             echo "Génération du fichier .env..."
             cat <<EOF > .env

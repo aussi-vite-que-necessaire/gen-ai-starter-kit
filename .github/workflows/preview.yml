@@ -16,12 +16,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 1. FIX MINUSCULE
       - name: Lowercase Repo Name
         run: |
           echo "REPO_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
 
-      # 2. CALCUL URLS
       - name: Calculate Preview URLs
         id: urls
         run: |
@@ -36,7 +34,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 3. BUILD
       - name: Build and Push API
         uses: docker/build-push-action@v4
         with:
@@ -55,7 +52,6 @@ jobs:
           push: true
           tags: ghcr.io/${{ env.REPO_LOWER }}/web:pr-${{ github.event.number }}
 
-      # 4. DEPLOY
       - name: Deploy Preview to VPS
         uses: appleboy/ssh-action@master
         with:
@@ -65,12 +61,10 @@ jobs:
           script: |
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # Variables
             PR_ID="pr-${{ github.event.number }}"
             FOLDER_NAME="${{ vars.PROJECT_NAME }}-$PR_ID"
             REPO_LOWER="${{ env.REPO_LOWER }}"
 
-            # Domaines
             WEB_DOMAIN="$PR_ID.${{ vars.MAIN_DOMAIN }}"
             API_DOMAIN="api-$PR_ID.${{ vars.MAIN_DOMAIN }}"
             N8N_DOMAIN="n8n-$PR_ID.${{ vars.MAIN_DOMAIN }}"
@@ -78,23 +72,20 @@ jobs:
             mkdir -p ~/apps/$FOLDER_NAME
             cd ~/apps/$FOLDER_NAME
 
-            # 1. Création de la structure de dossiers attendue par Docker Compose
+            # 1. Dossiers
             mkdir -p apps/automation/seed
 
-            # 2. Téléchargement des fichiers DANS le bon dossier
+            # 2. Téléchargements
             curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                  -o docker-compose.yml \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/docker-compose.yml
 
+            # On télécharge quand même les SQL au cas où, pour le futur
             curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                  -o apps/automation/seed/init-n8n.sql \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/seed/init-n8n.sql
 
-            curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                 -o apps/automation/seed/create-databases.sql \
-                 -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/seed/create-databases.sql
-
-            # Génération .env
+            # .env Generation
             cat <<EOF > .env
             IMAGE_NAME_API=ghcr.io/$REPO_LOWER/api:$PR_ID
             IMAGE_NAME_WEB=ghcr.io/$REPO_LOWER/web:$PR_ID
@@ -126,25 +117,32 @@ jobs:
             BETTER_AUTH_URL=https://$API_DOMAIN
             EOF
 
-            # Commandes Docker
-            echo "📥 Pulling..."
+            # --- DÉPLOIEMENT SÉQUENTIEL ROBUSTE ---
+
+            echo "📥 Pulling images..."
             docker compose pull
 
-            echo "🧨 Reset DB pour garantir la migration (Preview Only)..."
-            # 👇 CRITIQUE : Empêche l'erreur "Relation already exists"
+            echo "🧨 Reset DB..."
             docker compose -p $FOLDER_NAME down -v
 
-            echo "🚀 Starting..."
-            docker compose -p $FOLDER_NAME up -d --remove-orphans
+            echo "🚀 Démarrage DB & Redis uniquement..."
+            docker compose -p $FOLDER_NAME up -d db redis
 
-            echo "⏳ Waiting DB..."
+            echo "⏳ Attente disponibilité DB..."
             until docker compose -p $FOLDER_NAME exec -T db pg_isready -U app_user -d webapp; do sleep 2; done
 
-            echo "📦 Migrating..."
+            echo "🛠 Création explicite de la base n8n..."
+            # On force la création ici, plus de dépendance au script d'init aléatoire
+            docker compose -p $FOLDER_NAME exec -T db psql -U app_user -d webapp -c "CREATE DATABASE n8n;" || echo "Database n8n already exists"
+
+            # Si tu as un fichier init-n8n.sql valide (user admin), on peut l'injecter ici manuellement aussi :
+            # docker compose -p $FOLDER_NAME exec -T -i db psql -U app_user -d n8n < apps/automation/seed/init-n8n.sql || true
+
+            echo "📦 Migrations API..."
             docker compose -p $FOLDER_NAME run --rm api npm run db:migrate
 
-            # Import n8n workflows (Optionnel, à décommenter si besoin)
-            # docker compose -p $FOLDER_NAME exec -T n8n n8n import:workflow ...
+            echo "🚀 Démarrage Final (API, Web, n8n)..."
+            docker compose -p $FOLDER_NAME up -d
 
       - name: Comment PR URL
         uses: thollander/actions-comment-pull-request@v2
