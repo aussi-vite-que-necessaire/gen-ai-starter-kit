@@ -23,6 +23,9 @@ services:
 
       - OPENAI_API_KEY=${OPENAI_API_KEY}
 
+      - N8N_URL=${N8N_URL}
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET}
+
       # Emails (Interne Docker)
       - SMTP_HOST=mailpit
       - SMTP_PORT=1025

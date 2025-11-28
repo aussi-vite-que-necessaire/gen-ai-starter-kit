@@ -111,6 +111,8 @@ jobs:
             DOMAIN_NAME_N8N=$N8N_DOMAIN
 
             # Secrets App & n8n
+            N8N_URL=https://$N8N_DOMAIN
+
             INTERNAL_API_SECRET=${{ secrets.INTERNAL_API_SECRET }}
             N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}

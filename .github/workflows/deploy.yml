@@ -88,6 +88,7 @@ jobs:
             FRONTEND_URL=https://${{ vars.MAIN_DOMAIN }}
 
             # --- N8N SECRETS ---
+            N8N_URL=https://$N8N_DOMAIN
             INTERNAL_API_SECRET=${{ secrets.INTERNAL_API_SECRET }}
             N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} 
