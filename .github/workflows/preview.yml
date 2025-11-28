@@ -132,15 +132,18 @@ jobs:
             until docker compose -p $FOLDER_NAME exec -T db pg_isready -U app_user -d webapp; do sleep 2; done
 
             echo "🛠 Création explicite de la base n8n..."
-            # On force la création ici, plus de dépendance au script d'init aléatoire
             docker compose -p $FOLDER_NAME exec -T db psql -U app_user -d webapp -c "CREATE DATABASE n8n;" || echo "Database n8n already exists"
 
-            # Si tu as un fichier init-n8n.sql valide (user admin), on peut l'injecter ici manuellement aussi :
-            docker compose -p $FOLDER_NAME exec -T db psql -U app_user -d n8n < apps/automation/seed/init-n8n.sql || echo "⚠️ Seed injection failed"
-            # Debug : Vérifie si la table user a été créée
+            echo "💉 Injection du Seed Admin n8n (Méthode cp)..."
+
+            # 1. On copie le fichier DANS le conteneur (plus fiable que le pipe <)
+            docker compose -p $FOLDER_NAME cp apps/automation/seed/init-n8n.sql db:/tmp/init-n8n.sql
+
+            # 2. On l'exécute depuis l'intérieur
+            docker compose -p $FOLDER_NAME exec -T db psql -U app_user -d n8n -f /tmp/init-n8n.sql
+
             echo "🕵️‍♂️ VÉRIFICATION DE L'INJECTION :"
             docker compose -p $FOLDER_NAME exec -T db psql -U app_user -d n8n -c 'SELECT email FROM "user";'
-
             # --
             echo "📦 Migrations API..."
             docker compose -p $FOLDER_NAME run --rm api npm run db:migrate
