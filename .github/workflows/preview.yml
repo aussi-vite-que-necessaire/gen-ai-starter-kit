@@ -78,17 +78,20 @@ jobs:
             mkdir -p ~/apps/$FOLDER_NAME
             cd ~/apps/$FOLDER_NAME
 
-            # Fichiers
+            # 1. Création de la structure de dossiers attendue par Docker Compose
+            mkdir -p apps/automation/seed
+
+            # 2. Téléchargement des fichiers DANS le bon dossier
             curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                  -o docker-compose.yml \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/docker-compose.yml
 
             curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                 -o init-n8n.sql \
+                 -o apps/automation/seed/init-n8n.sql \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/seed/init-n8n.sql
 
             curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                 -o create-databases.sql \
+                 -o apps/automation/seed/create-databases.sql \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/seed/create-databases.sql
 
             # Génération .env
