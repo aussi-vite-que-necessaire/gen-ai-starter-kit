@@ -1,0 +1,51 @@
+{
+  "updatedAt": "2025-11-28T19:39:17.238Z",
+  "createdAt": "2025-11-28T19:39:17.238Z",
+  "id": "CE1aB6M2zzy6mHq7",
+  "name": "My workflow",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "0781d6b3-713f-4fd1-8a1f-1a0b8c3c71ee",
+      "name": "When clicking ‘Execute workflow’"
+    }
+  ],
+  "connections": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {},
+  "versionId": "d1a14861-0ceb-402d-9b30-a80eaa8b8233",
+  "versionCounter": 1,
+  "triggerCount": 0,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2025-11-28T19:39:17.238Z",
+      "createdAt": "2025-11-28T19:39:17.238Z",
+      "role": "workflow:owner",
+      "workflowId": "CE1aB6M2zzy6mHq7",
+      "projectId": "ZTDiQSKWAWT8WeBL",
+      "project": {
+        "updatedAt": "2025-11-28T19:37:36.837Z",
+        "createdAt": "2025-11-28T18:44:37.008Z",
+        "id": "ZTDiQSKWAWT8WeBL",
+        "name": "Manu Bernard <sys@avqn.ch>",
+        "type": "personal",
+        "icon": null,
+        "description": null
+      }
+    }
+  ]
+}
