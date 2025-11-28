@@ -16,8 +16,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # --- CALCUL DES URLS ---
-      # On prefixe ton domaine principal par pr-XX
+      # --- 1. FIX CASE SENSITIVITY ---
+      # On normalise le nom du repo en minuscules pour Docker
+      - name: Lowercase Repo Name
+        run: |
+          echo "REPO_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
+
+      # --- 2. CALCUL DES URLS ---
       - name: Calculate Preview URLs
         id: urls
         run: |
@@ -25,9 +30,36 @@ jobs:
           echo "WEB_URL=https://pr-${{ github.event.number }}.${{ vars.MAIN_DOMAIN }}" >> $GITHUB_OUTPUT
           echo "N8N_URL=https://n8n-pr-${{ github.event.number }}.${{ vars.MAIN_DOMAIN }}" >> $GITHUB_OUTPUT
 
-      # ... (Build API/Web identique) ...
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- DEPLOY ---
+      # --- 3. BUILD API ---
+      - name: Build and Push API
+        uses: docker/build-push-action@v4
+        with:
+          context: ./apps/api
+          push: true
+          # Note l'utilisation de env.REPO_LOWER ici
+          tags: ghcr.io/${{ env.REPO_LOWER }}/api:pr-${{ github.event.number }}
+
+      # --- 4. BUILD WEB ---
+      - name: Create Web Env for Preview
+        run: |
+          echo "VITE_API_URL=${{ steps.urls.outputs.API_URL }}" > ./apps/web/.env
+
+      - name: Build and Push Web
+        uses: docker/build-push-action@v4
+        with:
+          context: ./apps/web
+          push: true
+          # Note l'utilisation de env.REPO_LOWER ici aussi
+          tags: ghcr.io/${{ env.REPO_LOWER }}/web:pr-${{ github.event.number }}
+
+      # --- 5. DEPLOY SUR VPS ---
       - name: Deploy Preview to VPS
         uses: appleboy/ssh-action@master
         with:
@@ -35,72 +67,88 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
+            # Login Docker sur le VPS
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
+            # Variables de dossier
             PR_ID="pr-${{ github.event.number }}"
             FOLDER_NAME="${{ vars.PROJECT_NAME }}-$PR_ID"
 
+            # Récupération de la variable minuscule depuis GitHub Actions
+            REPO_LOWER="${{ env.REPO_LOWER }}"
+
+            # Création du dossier isolé
             mkdir -p ~/apps/$FOLDER_NAME
             cd ~/apps/$FOLDER_NAME
 
-            # 1. Compose
+            # Téléchargement des fichiers de configuration
             curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                  -o docker-compose.yml \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/docker-compose.yml
 
-            # 2. Seed n8n (Depuis la branche de la PR !)
             curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                  -o init-n8n.sql \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/seed/init-n8n.sql
 
-            # Domaines
+            # Variables de Domaines
             WEB_DOMAIN="$PR_ID.${{ vars.MAIN_DOMAIN }}"
             API_DOMAIN="api-$PR_ID.${{ vars.MAIN_DOMAIN }}"
             N8N_DOMAIN="n8n-$PR_ID.${{ vars.MAIN_DOMAIN }}"
 
+            # Génération du .env sur le serveur
             cat <<EOF > .env
-            IMAGE_NAME_API=ghcr.io/${{ github.repository }}/api:$PR_ID
-            IMAGE_NAME_WEB=ghcr.io/${{ github.repository }}/web:$PR_ID
+            # Images Docker (Avec le nom en minuscules !)
+            IMAGE_NAME_API=ghcr.io/$REPO_LOWER/api:$PR_ID
+            IMAGE_NAME_WEB=ghcr.io/$REPO_LOWER/web:$PR_ID
+
+            # Identifiant unique pour Traefik
             PROJECT_NAME=$FOLDER_NAME
             ENV_TYPE=preview
 
-            # Traefik routing
+            # Routing Traefik
             DOMAIN_NAME_WEB=$WEB_DOMAIN
             DOMAIN_NAME_API=$API_DOMAIN
             DOMAIN_NAME_N8N=$N8N_DOMAIN
 
-            # Secrets Partagés
+            # Secrets App & n8n
             INTERNAL_API_SECRET=${{ secrets.INTERNAL_API_SECRET }}
             N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}
-            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}  # 👈 AJOUTÉ ICI (Fix Warning)
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
 
-            # App Config
+            # Config App
             NODE_ENV=production
             PORT=3000
             FRONTEND_URL=https://$WEB_DOMAIN
 
+            # Config Database
             DATABASE_URL=postgresql://app_user:${{ secrets.DB_PASSWORD }}@db:5432/mydb
             REDIS_HOST=redis
             REDIS_PORT=6379
 
-            BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}
-            BETTER_AUTH_URL=https://$API_DOMAIN
-
+            # Config Infra
             DB_PASSWORD=${{ secrets.DB_PASSWORD }}
             POSTGRES_USER=app_user
             POSTGRES_DB=mydb
+
+            # Config Auth
+            BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}
+            BETTER_AUTH_URL=https://$API_DOMAIN
             EOF
 
+            # Lancement
+            echo "📥 Pulling images..."
             docker compose pull
+
+            echo "🚀 Starting services..."
             docker compose -p $FOLDER_NAME up -d --remove-orphans
 
-            echo "Attente DB..."
+            echo "⏳ Waiting for DB..."
             until docker compose -p $FOLDER_NAME exec -T db pg_isready -U app_user -d mydb; do sleep 2; done
 
-            echo "Migration..."
+            echo "📦 Running Migrations..."
             docker compose -p $FOLDER_NAME run --rm api npm run db:migrate
 
-            # TODO: Ajouter le "n8n import" ici pour charger les workflows JSON de la PR
+            # TODO: Importer les workflows n8n ici si besoin (nécessite d'avoir copié les JSONs)
 
       - name: Comment PR URL
         uses: thollander/actions-comment-pull-request@v2
