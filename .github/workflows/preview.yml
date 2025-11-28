@@ -70,6 +70,12 @@ jobs:
             # Login Docker sur le VPS
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
+            echo "🧹 Nettoyage de l'espace disque..."
+
+            docker system prune -a -f 
+
+            docker volume prune -f 
+
             # Variables de dossier
             PR_ID="pr-${{ github.event.number }}"
             FOLDER_NAME="${{ vars.PROJECT_NAME }}-$PR_ID"
