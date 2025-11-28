@@ -15,7 +15,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 1. FIX MINUSCULE (Comme pour la preview)
+      # 1. FIX MINUSCULE
       - name: Lowercase Repo Name
         run: |
           echo "REPO_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
@@ -27,7 +27,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 2. BUILD API (Avec REPO_LOWER)
+      # 2. BUILD API
       - name: Build and Push API
         uses: docker/build-push-action@v4
         with:
@@ -35,7 +35,7 @@ jobs:
           push: true
           tags: ghcr.io/${{ env.REPO_LOWER }}/api:latest
 
-      # 3. BUILD WEB (Avec REPO_LOWER)
+      # 3. BUILD WEB
       - name: Create Web Env for Production
         run: |
           echo "VITE_API_URL=https://api.${{ vars.MAIN_DOMAIN }}" > ./apps/web/.env
@@ -47,7 +47,7 @@ jobs:
           push: true
           tags: ghcr.io/${{ env.REPO_LOWER }}/web:latest
 
-      # 4. DEPLOY
+      # 4. DEPLOY TO VPS
       - name: Deploy to VPS
         uses: appleboy/ssh-action@master
         with:
@@ -57,6 +57,7 @@ jobs:
           script: |
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
+            # Nettoyage prudent (uniquement images, pas les volumes !)
             echo "🧹 Ménage pré-déploiement..."
             docker system prune -a -f 
 
@@ -66,26 +67,28 @@ jobs:
             # Récupération de la variable minuscule
             REPO_LOWER="${{ env.REPO_LOWER }}"
 
-            # 1. Création dossier
+            # --- FICHIERS ---
             mkdir -p apps/automation/seed
 
-            # 2. Téléchargements
+            # 1. Docker Compose
             curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                  -o docker-compose.yml \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml
 
-            curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                 -o apps/automation/seed/init-n8n.sql \
-                 -L https://raw.githubusercontent.com/${{ github.repository }}/main/apps/automation/seed/init-n8n.sql
-                 
-            # AJOUTE BIEN CELUI-CI :
+            # 2. Script création DB (dans le sous-dossier)
             curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                  -o apps/automation/seed/create-databases.sql \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/main/apps/automation/seed/create-databases.sql
 
+            # 3. Seed n8n (A la RACINE pour simplifier le 'docker cp')
+            curl -f -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                 -o init-n8n.sql \
+                 -L https://raw.githubusercontent.com/${{ github.repository }}/main/apps/automation/seed/init-n8n.sql
+
+            # --- ENV ---
             echo "Génération du fichier .env..."
             cat <<EOF > .env
-            # --- DOCKER (Avec minuscules) ---
+            # --- DOCKER ---
             IMAGE_NAME_API=ghcr.io/$REPO_LOWER/api:latest
             IMAGE_NAME_WEB=ghcr.io/$REPO_LOWER/web:latest
             PROJECT_NAME=${{ vars.PROJECT_NAME }}
@@ -97,7 +100,6 @@ jobs:
             DOMAIN_NAME_N8N=n8n.${{ vars.MAIN_DOMAIN }}
 
             # --- SECRETS & N8N ---
-            # Ici on met l'URL en dur car on connait le domaine
             N8N_URL=https://n8n.${{ vars.MAIN_DOMAIN }}
             INTERNAL_API_SECRET=${{ secrets.INTERNAL_API_SECRET }}
             N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}
@@ -125,20 +127,40 @@ jobs:
 
             chmod 600 .env
 
-            echo "Démarrage Infra..."
-            docker compose up -d db redis n8n db-backup mailpit
+            # --- SÉQUENCE DE DÉMARRAGE (PROD SAFE) ---
 
-            echo "Attente DB..."
-            until docker compose exec -T db pg_isready -U app_user -d webapp; do
-              sleep 2
-            done
+            echo "📥 Pulling images..."
+            docker compose pull
 
-            echo "Migration..."
-            # Pas de reset DB en prod ! On migre doucement.
+            # PAS DE RESET DB ICI (PROD) !
+
+            echo "🚀 Démarrage DB & Redis..."
+            docker compose up -d db redis
+
+            echo "⏳ Attente disponibilité DB..."
+            until docker compose exec -T db pg_isready -U app_user -d webapp; do sleep 2; done
+
+            echo "🛠 Création base n8n (si inexistante)..."
+            docker compose exec -T db psql -U app_user -d webapp -c "CREATE DATABASE n8n;" || echo "Database n8n already exists"
+
+            echo "💉 Vérification Seed Admin n8n..."
+            # On vérifie si la table user existe déjà dans n8n. Si oui, on ne touche à rien pour ne pas écraser la prod.
+            if ! docker compose exec -T db psql -U app_user -d n8n -c 'SELECT 1 FROM "user" LIMIT 1;' > /dev/null 2>&1; then
+                echo "📭 Base n8n vide. Injection du Seed..."
+                docker compose cp init-n8n.sql db:/tmp/init-n8n.sql
+                docker compose exec -T db psql -U app_user -d n8n -f /tmp/init-n8n.sql
+            else
+                echo "✅ Base n8n déjà initialisée. Skip seed."
+            fi
+
+            echo "📦 Migrations API..."
             docker compose run --rm api npm run db:migrate || {
               echo "❌ ERREUR MIGRATIONS"
               exit 1
             }
 
-            docker compose up -d api web --remove-orphans
+            echo "🚀 Démarrage Final..."
+            # --remove-orphans nettoie les vieux conteneurs si tu as changé le docker-compose
+            docker compose up -d --remove-orphans
+
             echo "✅ Déployé sur https://${{ vars.MAIN_DOMAIN }}"
