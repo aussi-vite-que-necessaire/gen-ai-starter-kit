@@ -15,6 +15,10 @@
     "n8n:seed:save": "docker exec gen-ai-starter-kit-db pg_dump -U app_user -d webapp --clean --if-exists > apps/automation/seed/init-n8n.sql",
     "--- DATABASE ---": "---",
     "db:studio": "cd apps/api && npm run db:studio",
-    "db:migrate": "cd apps/api && npm run db:migrate"
+    "db:migrate": "cd apps/api && npm run db:migrate",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
   }
 }
