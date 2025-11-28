@@ -30,21 +30,21 @@ services:
       - "traefik.enable=true"
 
       # Router API
-      - "traefik.http.routers.${SERVICE_NAME}-api.rule=Host(`${DOMAIN_NAME_API}`)"
-      - "traefik.http.routers.${SERVICE_NAME}-api.entrypoints=websecure"
-      - "traefik.http.routers.${SERVICE_NAME}-api.tls.certresolver=myresolver"
-      - "traefik.http.services.${SERVICE_NAME}-api.loadbalancer.server.port=3000"
+      - "traefik.http.routers.${PROJECT_NAME}-api.rule=Host(`${DOMAIN_NAME_API}`)"
+      - "traefik.http.routers.${PROJECT_NAME}-api.entrypoints=websecure"
+      - "traefik.http.routers.${PROJECT_NAME}-api.tls.certresolver=myresolver"
+      - "traefik.http.services.${PROJECT_NAME}-api.loadbalancer.server.port=3000"
 
       # Rate Limit
       - "traefik.http.middlewares.limit-api.ratelimit.average=100"
       - "traefik.http.middlewares.limit-api.ratelimit.burst=50"
-      - "traefik.http.routers.${SERVICE_NAME}-api.middlewares=limit-api"
+      - "traefik.http.routers.${PROJECT_NAME}-api.middlewares=limit-api"
 
       # Router n8n
-      - "traefik.http.routers.${SERVICE_NAME}-n8n.rule=Host(`${DOMAIN_NAME_N8N}`)"
-      - "traefik.http.routers.${SERVICE_NAME}-n8n.entrypoints=websecure"
-      - "traefik.http.routers.${SERVICE_NAME}-n8n.tls.certresolver=myresolver"
-      - "traefik.http.services.${SERVICE_NAME}-n8n.loadbalancer.server.port=5678"
+      - "traefik.http.routers.${PROJECT_NAME}-n8n.rule=Host(`${DOMAIN_NAME_N8N}`)"
+      - "traefik.http.routers.${PROJECT_NAME}-n8n.entrypoints=websecure"
+      - "traefik.http.routers.${PROJECT_NAME}-n8n.tls.certresolver=myresolver"
+      - "traefik.http.services.${PROJECT_NAME}-n8n.loadbalancer.server.port=5678"
 
   # --- FRONTEND (WEB) ---
   web:
@@ -55,10 +55,10 @@ services:
     labels:
       - "traefik.enable=true"
       # Router Web
-      - "traefik.http.routers.${SERVICE_NAME}-web.rule=Host(`${DOMAIN_NAME_WEB}`)"
-      - "traefik.http.routers.${SERVICE_NAME}-web.entrypoints=websecure"
-      - "traefik.http.routers.${SERVICE_NAME}-web.tls.certresolver=myresolver"
-      - "traefik.http.services.${SERVICE_NAME}-web.loadbalancer.server.port=80"
+      - "traefik.http.routers.${PROJECT_NAME}-web.rule=Host(`${DOMAIN_NAME_WEB}`)"
+      - "traefik.http.routers.${PROJECT_NAME}-web.entrypoints=websecure"
+      - "traefik.http.routers.${PROJECT_NAME}-web.tls.certresolver=myresolver"
+      - "traefik.http.services.${PROJECT_NAME}-web.loadbalancer.server.port=80"
 
   # --- INFRA ---
   db:
@@ -103,12 +103,12 @@ services:
       - default
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.${SERVICE_NAME}-mail.rule=Host(`emails.${DOMAIN_NAME_WEB}`)"
-      - "traefik.http.routers.${SERVICE_NAME}-mail.entrypoints=websecure"
-      - "traefik.http.routers.${SERVICE_NAME}-mail.tls.certresolver=myresolver"
-      - "traefik.http.services.${SERVICE_NAME}-mail.loadbalancer.server.port=8025"
+      - "traefik.http.routers.${PROJECT_NAME}-mail.rule=Host(`emails.${DOMAIN_NAME_WEB}`)"
+      - "traefik.http.routers.${PROJECT_NAME}-mail.entrypoints=websecure"
+      - "traefik.http.routers.${PROJECT_NAME}-mail.tls.certresolver=myresolver"
+      - "traefik.http.services.${PROJECT_NAME}-mail.loadbalancer.server.port=8025"
       - "traefik.http.middlewares.auth.basicauth.users=admin:$$apr1$$mTp02pz/$$JgD44iCfTvV5g6ORuzrJJ."
-      - "traefik.http.routers.${SERVICE_NAME}-mail.middlewares=auth"
+      - "traefik.http.routers.${PROJECT_NAME}-mail.middlewares=auth"
 
   n8n:
     image: n8nio/n8n:latest

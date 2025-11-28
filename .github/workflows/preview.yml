@@ -61,7 +61,7 @@ jobs:
             cat <<EOF > .env
             IMAGE_NAME_API=ghcr.io/${{ github.repository }}/api:$PR_ID
             IMAGE_NAME_WEB=ghcr.io/${{ github.repository }}/web:$PR_ID
-            SERVICE_NAME=$FOLDER_NAME
+            PROJECT_NAME=$FOLDER_NAME
             ENV_TYPE=preview
 
             # Traefik routing
