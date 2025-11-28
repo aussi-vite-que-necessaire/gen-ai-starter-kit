@@ -55,13 +55,19 @@ jobs:
           script: |
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # On utilise la variable PROJECT_NAME pour le dossier
             mkdir -p ~/apps/${{ vars.PROJECT_NAME }}
             cd ~/apps/${{ vars.PROJECT_NAME }}
 
+            # 1. Téléchargement du Docker Compose
             curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                  -o docker-compose.yml \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml
+
+            # 2. Téléchargement du Seed n8n (CRITIQUE pour l'user Admin)
+            # On le met à la racine du dossier pour que le volume ./init-n8n.sql le trouve
+            curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                 -o init-n8n.sql \
+                 -L https://raw.githubusercontent.com/${{ github.repository }}/main/apps/automation/seed/init-n8n.sql
 
             echo "Génération du fichier .env..."
             cat <<EOF > .env
@@ -71,16 +77,19 @@ jobs:
             SERVICE_NAME=${{ vars.PROJECT_NAME }}
             ENV_TYPE=production
 
-            # --- TRAEFIK (Logique dynamique) ---
-            # Le Web prend le domaine principal
+            # --- TRAEFIK ---
             DOMAIN_NAME_WEB=${{ vars.MAIN_DOMAIN }}
-            # L'API prend le sous-domaine "api."
             DOMAIN_NAME_API=api.${{ vars.MAIN_DOMAIN }}
+            DOMAIN_NAME_N8N=n8n.${{ vars.MAIN_DOMAIN }}
 
             # --- API CONFIG ---
             NODE_ENV=production
             PORT=3000
             FRONTEND_URL=https://${{ vars.MAIN_DOMAIN }}
+
+            # --- N8N SECRETS ---
+            INTERNAL_API_SECRET=${{ secrets.INTERNAL_API_SECRET }}
+            N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}
 
             # --- DB & REDIS ---
             DATABASE_URL=postgresql://app_user:${{ secrets.DB_PASSWORD }}@db:5432/mydb
@@ -99,23 +108,22 @@ jobs:
 
             chmod 600 .env
 
-            # Démarrage Infra
             echo "Démarrage Infra..."
-            docker compose up -d db redis db-backup mailpit
+            docker compose up -d db redis n8n db-backup mailpit
 
-            # Wait DB
             echo "Attente DB..."
             until docker compose exec -T db pg_isready -U app_user -d mydb; do
               sleep 2
             done
 
-            # Migration Robuste (Run --rm)
             echo "Migration..."
             docker compose run --rm api npm run db:migrate || {
               echo "❌ ERREUR MIGRATIONS"
               exit 1
             }
 
-            # Start Apps
+            # Import des Workflows (Optionnel mais recommandé pour la Prod)
+            # docker compose exec -T n8n n8n import:workflow --input=... (Nécessite de télécharger les JSONs aussi)
+
             docker compose up -d api web --remove-orphans
-            echo "✅ Déployé sur https://${{ vars.MAIN_DOMAIN }}"
+            echo "✅ Déployé sur https://${{ vars.MAIN_DOMAIN }} et https://n8n.${{ vars.MAIN_DOMAIN }}"

@@ -4,8 +4,6 @@ import {
   timestamp,
   boolean,
   uuid,
-  pgEnum,
-  index,
   jsonb,
 } from "drizzle-orm/pg-core"
 
@@ -61,74 +59,23 @@ export const verification = pgTable("verification", {
   updatedAt: timestamp("updatedAt"),
 })
 
-// --- Table Métier : Generations ---
 export const generation = pgTable("generation", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => user.id), // Lien avec l'utilisateur (Clé étrangère)
-  prompt: text("prompt").notNull(),
-  result: text("result").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull(),
+
+  // Le type de workflow (ex: "landing-page")
+  type: text("type").notNull(),
+
+  // L'état actuel (ex: "GENERATING_IMAGES", "COMPLETED")
+  status: text("status").default("PENDING").notNull(),
+
+  // Un message pour l'utilisateur (ex: "Analyse de votre site en cours...")
+  displayMessage: text("display_message"),
+
+  // Le résultat final (seulement à la fin)
+  result: jsonb("result"),
+
+  error: text("error"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 })
-
-// Enum pour les statuts
-export const workflowStatusEnum = pgEnum("workflow_status", [
-  "PENDING",
-  "RUNNING",
-  "WAITING_FOR_INPUT", // Pause (Humain)
-  "WAITING_CHILDREN", // Pause (Sous-workflows)
-  "COMPLETED",
-  "FAILED",
-])
-
-export const workflowRuns = pgTable(
-  "workflow_run",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    tenantId: text("tenant_id").references(() => user.id), // Optionnel: pour lier à un user
-
-    workflowId: text("workflow_id").notNull(), // ex: "landing-page-generator"
-    status: workflowStatusEnum("status").default("PENDING").notNull(),
-
-    // Pour le pattern Parent/Child
-    parentId: uuid("parent_id"),
-    parentStepId: text("parent_step_id"), // L'étape du parent qui a spawn
-
-    // Mémoire globale du workflow (Context)
-    context: jsonb("context").default({}),
-
-    input: jsonb("input").notNull(), // L'input initial
-    result: jsonb("result"), // Le résultat final si fini
-    error: text("error"), // Message d'erreur si failed
-
-    createdAt: timestamp("created_at").defaultNow(),
-    updatedAt: timestamp("updated_at").defaultNow(),
-  },
-  (t) => ({
-    parentIdx: index("workflow_run_parent_idx").on(t.parentId),
-  })
-)
-
-export const workflowSteps = pgTable(
-  "workflow_step",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    runId: uuid("run_id")
-      .references(() => workflowRuns.id)
-      .notNull(),
-
-    stepId: text("step_id").notNull(), // ex: "generate-copy"
-    status: workflowStatusEnum("status").default("PENDING").notNull(),
-
-    input: jsonb("input"), // Ce qui est rentré dans l'étape
-    output: jsonb("output"), // Ce qui est sorti de l'étape
-    error: text("error"),
-
-    startedAt: timestamp("started_at"),
-    completedAt: timestamp("completed_at"),
-  },
-  (t) => ({
-    runIdx: index("workflow_step_run_idx").on(t.runId),
-  })
-)

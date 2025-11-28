@@ -27,6 +27,10 @@ const envSchema = z.object({
 
   // AI
   OPENAI_API_KEY: z.string(),
+
+  // n8n
+  N8N_URL: z.string().url(),
+  INTERNAL_API_SECRET: z.string(),
 })
 
 const parsedEnv = envSchema.safeParse(process.env)

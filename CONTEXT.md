@@ -1,179 +1,167 @@
-# 📘 GEN AI STARTER KIT - MASTER CONTEXT (V4)
+◊Tu as raison, le diable est dans les détails, et comme c'est un pivot majeur, il vaut mieux que tout soit écrit noir sur blanc pour ne rien perdre de notre brainstorming.
 
-Ce document décrit l'état technique, l'architecture et les règles de développement du projet **Gen AI Starter Kit**. Il sert de référence unique pour toute IA ou développeur rejoignant le projet.
+Voici la **Version Complète et Détaillée (V5)**. Elle capture tout : le Zero-Config, le Discovery, le Docker Embed, le GitOps et la logique du Custom Node.
 
----
-
-## 1. Philosophie & Principes Directeurs
-
-- **Clean Architecture Stricte (Backend) :** Isolation totale du code métier (`core`) vis-à-vis des frameworks et bases de données (`infra`, `interface`).
-- **Workflow First :** Tout processus long ou complexe (Génération IA) est modélisé sous forme de Workflow asynchrone, résilient et observable.
-- **TDD First :** Pas de code métier sans test.
-- **Approche Fonctionnelle :** Utilisation de Factory Patterns et de Closures. Pas de Classes Service lourdes.
-- **Raw Tailwind (Frontend) :** Pas de lib UI complexe. Tailwind CSS natif + `lucide-react` + `cn()`.
+Sauvegarde ça, c'est ton assurance tranquillité. Et bonne formation demain ! 😉
 
 ---
 
-## 2. Stack Technique
+# 📘 GEN AI STARTER KIT - MASTER CONTEXT (V5 - THE AUTOMATION STACK)
 
-### 🏗 Infrastructure
-
-- **Runtime :** Node.js 22+ (ESM).
-- **Containerisation :** Docker & Docker Compose (Postgres + Redis).
-- **Queueing :** Redis + BullMQ (Gestion des jobs asynchrones).
-- **CI/CD :** GitHub Actions.
-
-### 🔙 Backend (`apps/api`)
-
-- **Framework :** Hono.
-- **Database :** PostgreSQL 15 via Drizzle ORM.
-- **Validation :** Zod.
-- **Testing :** Vitest.
-- **Auth :** Better-Auth.
-- **Workflow Engine :** Moteur Custom sur BullMQ (voir section Architecture).
-
-### 🎨 Frontend (`apps/web`)
-
-- **Framework :** React + Vite + TypeScript.
-- **State Server :** TanStack Query.
-- **Styling :** Tailwind CSS.
+Ce document décrit l'architecture pivot du projet. Nous passons d'une orchestration pure code (BullMQ) à une orchestration hybride **Code + n8n Embedded**.
 
 ---
 
-## 3. Architecture Détaillée (Backend)
+## 1. Philosophie : "The Pro Automation Stack"
 
-Architecture hexagonale en 3 couches + Moteur de Workflow :
+- **Hybrid Orchestration :**
+  - **n8n (Le Chef de Chantier)** : Gère le flux, les boucles, les appels API externes, et le "Wiring" visuel.
+  - **Code (L'Artisan)** : Gère la validation (Zod), la persistance critique (DB Relationnelle), et l'Auth.
+- **n8n as a Service (Embedded) :** n8n n'est pas un SaaS externe. Il tourne dans le `docker-compose` du projet.
+  - **Isolation :** Chaque environnement (Local, Preview PR, Prod) possède son propre n8n isolé.
+  - **Réseau :** n8n communique avec l'API via le réseau Docker interne (`http://api:3000`).
+- **GitOps & Versioning :** Les workflows n8n ne vivent pas dans la DB de n8n uniquement. Ils sont exportés en JSON dans le repo Git (`apps/automation/workflows`) et chargés au démarrage.
+- **Developer Experience (DX) :** Aucune configuration manuelle requise. Le Custom Node se configure tout seul ("Zero-Config").
+
+---
+
+## 2. Architecture Technique
+
+### 🏗 Infrastructure (Docker Compose)
+
+| Service | Rôle                   | Configuration Réseau                                          |
+| :------ | :--------------------- | :------------------------------------------------------------ |
+| **API** | Backend Hono + Drizzle | Expose port `3000` (Interne: `http://api:3000`)               |
+| **DB**  | PostgreSQL             | Stockage métier + Stockage n8n                                |
+| **n8n** | Moteur de Workflow     | Expose port `5678`. Pré-configuré avec `INTERNAL_API_SECRET`. |
+
+### 🔐 Sécurité "Machine-to-Machine"
+
+Pas de OAuth complexe entre n8n et l'API. Ils partagent un secret dans le `.env`.
+
+- **API :** Vérifie le header `x-internal-secret`.
+- **n8n (Custom Node) :** Injecte automatiquement ce header via `process.env.INTERNAL_API_SECRET`.
+
+---
+
+## 3. Le "Protocol" (Communication API <-> n8n)
+
+Nous utilisons deux patterns complémentaires pour gérer les données.
+
+### A. Pattern "Scratchpad" (Mémoire Partagée)
+
+Une zone JSON temporaire pour stocker l'avancement du workflow et afficher l'UI en temps réel.
+
+- **n8n** : Pousse des données en vrac (`{ "step": "generating", "draft_title": "..." }`).
+- **Frontend** : Polling sur ce JSON pour afficher le loader ou les résultats intermédiaires.
+
+### B. Pattern "Toolbox" (Remote Procedure Call)
+
+n8n demande à l'API d'exécuter une fonction TypeScript précise et sécurisée.
+
+- **n8n** : "Exécute `create-page` avec `{ title: 'Hello' }`".
+- **API** : Valide le payload avec Zod, écrit dans la table `Page` (SQL), et retourne `{ pageId: 123 }`.
+
+---
+
+## 4. Implémentation Backend (`apps/api`)
+
+L'API devient une passerelle intelligente qui expose ses capacités.
+
+### Structure des Dossiers
 
 ```
 apps/api/src/
-├── core/                # 🧠 DOMAIN
-│   ├── entities/        # Types TS & Zod Schemas
-│   ├── ports/           # Interfaces (Contrats)
-│   ├── use-cases/       # Logique métier unitaire
-│   └── workflows/       # ⚡ Définitions des Workflows (Orchestration)
-│       ├── types.ts     # Grammaire du moteur
-│       └── registry.ts  # Map des workflows actifs
+├── core/
+│   └── processors/           # 🧰 La Boîte à Outils (Toolbox)
+│       ├── index.ts          # ActionRegistry (Map String -> Function)
+│       ├── create-page.ts    # Action unitaire (Schema Zod + Logique DB)
+│       └── generate-pdf.ts   # Action unitaire
 │
-├── infra/               # 🔌 ADAPTERS
-│   ├── adapters/        # BullMQWorkflowEngine, OpenAI...
-│   ├── db/              # Schema Drizzle (workflow_run, workflow_step...)
-│   └── auth.ts          # Config Better-Auth
+├── infra/
+│   └── db/schema.ts          # Table `generation_run` (id, status, scratchpad: jsonb)
 │
-└── interface/           # 🗣️ DRIVERS
-    └── http/            # Serveur Hono
+└── interface/
+    └── http/
+        ├── routes/
+        │   └── internal.ts   # Routes privées pour n8n
+        └── middlewares/
+            └── internal-auth.ts # Guard sur `x-internal-secret`
 ```
 
----
+### Les 3 Endpoints Magiques (`internal.ts`)
 
-## 4. Le Moteur de Workflow (Custom Engine)
-
-Nous utilisons un moteur maison basé sur BullMQ pour orchestrer les tâches IA.
-
-### Principes
-
-1.  **Code-First :** Les workflows sont définis en TypeScript dans `core/workflows/`.
-2.  **Stateful :** L'état est persisté en DB (`workflow_run`, `workflow_step`) à chaque étape.
-3.  **Human-in-the-loop :** Capacité de mettre un workflow en pause (`WAITING_FOR_INPUT`) indéfiniment.
-
-### Grammaire (Comment écrire un Workflow)
-
-```typescript
-// Exemple : core/workflows/my-workflow.ts
-export const myWorkflow = defineWorkflow({
-  id: "my-process",
-  initialStep: "step-1",
-  steps: {
-    "step-1": {
-      next: "step-2",
-      run: async (ctx) => {
-        // Logique pure ou appel de Use Case
-        return step({ someData: "hello" })
-      },
-    },
-    "step-2": {
-      next: null, // Fin
-      run: async (ctx) => {
-        // Accès à l'historique
-        const prev = ctx.history["step-1"]
-        return step({ result: prev.someData + " world" })
-      },
-    },
-  },
-})
-```
-
-### Primitives Disponibles
-
-- `step(payload)` : Termine l'étape avec succès.
-- `Workflow.spawn(name, inputs)` : Lance des sous-workflows en parallèle (Pattern Fan-out).
-- `Workflow.waitForEvent(name)` : Met le workflow en pause jusqu'à appel API (Validation humaine).
+1.  **`GET /internal/actions` (Discovery)**
+    - Retourne la liste des actions disponibles et leurs schémas (pour l'UI de n8n).
+2.  **`PATCH /internal/runs/:id/scratchpad` (State)**
+    - Merge le payload reçu avec le JSON existant en DB.
+3.  **`POST /internal/runs/:id/execute` (RPC)**
+    - Reçoit `{ action: "nom-action", payload: { ... } }`.
+    - Trouve l'action dans le `ActionRegistry`.
+    - Valide Zod.
+    - Exécute et retourne le résultat.
 
 ---
 
-## 5. Modèle de Données (Database)
+## 5. Implémentation Automation (`apps/automation`)
 
-**Tables Système Workflow**
+### Le Custom Node : "GenAI App Node" 🪄
 
-- `workflow_run` : L'instance globale. Contient le `context` (mémoire JSON) et le `status`.
-- `workflow_step` : L'historique d'exécution. Logs des inputs/outputs par étape.
+C'est un nœud n8n natif (développé en TypeScript) spécifique à notre projet.
 
-**Tables Métier**
+**Fonctionnalités Clés :**
 
-- `user` (Better-Auth).
-- `generation` (Résultats finaux).
+1.  **Zero-Config :**
 
----
+    - `Base URL` par défaut = `http://api:3000`.
+    - `API Key` lue depuis `process.env.INTERNAL_API_SECRET`.
+    - L'utilisateur n'a RIEN à configurer en drag & drop.
 
-## 6. Workflow de Développement
+2.  **Auto-Discovery (Listes Déroulantes) :**
 
-### Comment ajouter une Feature "Complexe" (Workflow) ?
+    - Le nœud interroge `GET /internal/actions` au chargement.
+    - Le champ "Action" devient une liste déroulante avec les vrais noms des fonctions (`create-page`, `publish-post`...). Impossible de faire une typo.
 
-1.  **Use Cases :** Créer les briques unitaires (ex: `GenerateImage`, `SaveData`) dans `core/use-cases`.
-2.  **Definition :** Assembler ces briques dans un fichier `core/workflows/xxx.workflow.ts`.
-3.  **Registry :** Enregistrer le workflow dans `core/workflows/registry.ts`.
-4.  **Trigger :** Appeler `workflowEngine.startWorkflow('xxx', input)` depuis une route API.
-
----
-
-## 7. Variables d'Environnement (Nouveau)
-
-Ajout de Redis pour le moteur :
-
-```env
-# ... existants
-REDIS_HOST=localhost
-REDIS_PORT=6379
-```
+3.  **Opérations :**
+    - **Update State :** Wrapper simple vers l'endpoint Scratchpad.
+    - **Execute Action :** Affiche dynamiquement les champs requis selon l'action choisie (si possible) ou un champ JSON.
 
 ---
 
-## 8. État Actuel & Roadmap
+## 6. Workflow de Développement (Le Cycle de Vie)
 
-**✅ Fonctionnel (Done) :**
+### Initialisation
 
-- Auth complète.
-- Architecture Hexagonale en place.
-- **Moteur de Workflow V1 (BullMQ + Persistence).**
-- Support des tâches séquentielles.
+1.  `docker compose up` : Lance toute la stack.
+2.  Un script d'entrypoint dans n8n importe les workflows depuis `apps/automation/workflows/*.json`.
 
-**🚀 À Faire (Next Steps) :**
+### Ajouter une Feature (ex: "Save to Notion")
 
-1.  **Implémentation Métier :** Créer le vrai workflow "Landing Page Generator" (Brief -> Structure -> Contenu).
-2.  **Frontend Workflow :** Afficher la barre de progression en temps réel (Polling sur `workflow_step`).
-3.  **Human Validation :** Implémenter le `waitForEvent` pour la validation client.
-4.  **Flows :** Gérer le `spawn` pour générer les images en parallèle.
+1.  **Côté Code :**
+    - Créer `core/processors/save-notion.ts` avec son schema Zod.
+    - L'ajouter dans `ActionRegistry`.
+2.  **Côté n8n :**
+    - Rafraîchir l'éditeur.
+    - Le Custom Node affiche maintenant "Save to Notion" dans la liste.
+    - L'ajouter au workflow visuel.
+3.  **Sauvegarde :**
+    - `npm run n8n:export` : Dump le JSON du workflow dans le dossier Git.
+    - Commit & Push.
 
 ---
 
-## 9. Commandes Utiles
+## 7. Roadmap de Migration
 
-- **Lancer la stack (Infra) :** `docker compose -f docker-compose.dev.yml up -d` (Lance Postgres ET Redis).
-- **Lancer l'API + Worker :** `cd apps/api && npm run dev`.
-- **Voir les jobs Redis (Optionnel) :** Utiliser un outil comme "BullMQ Dashboard" ou "RedisInsight".
+1.  **Nettoyage :**
+    - Supprimer `bullmq`, `redis` (code), et le dossier `core/workflows` actuel.
+2.  **Infra :**
+    - Ajouter le service `n8n` au `docker-compose.dev.yml` (Image custom ou officielle avec build step).
+3.  **Backend Core :**
+    - Implémenter `ActionRegistry` et la table `generation_run`.
+4.  **Backend API :**
+    - Implémenter les routes `internal.ts` et l'auth par secret.
+5.  **n8n Custom Node :**
+    - Initialiser le package du node.
+    - Coder la logique de Discovery et d'injection d'Auth.
 
-```
-
-***
-
-Et voilà ! Tu es paré pour la suite. La prochaine fois qu'on ouvre une session, l'IA saura exactement comment fonctionne ton moteur et pourra t'aider à coder le workflow "Landing Page" complexe sans réinventer la roue. 🔥
-```
+---

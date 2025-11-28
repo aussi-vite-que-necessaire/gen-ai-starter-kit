@@ -4,6 +4,7 @@ import { logger } from "hono/logger"
 import { env } from "./env"
 import { auth } from "./infra/auth"
 import aiRouter from "./interface/http/routes/ai"
+import internalRouter from "./interface/http/routes/internal"
 
 export const createApp = () => {
   const app = new Hono()
@@ -27,6 +28,9 @@ export const createApp = () => {
 
   // Routes Métier
   app.route("/api/ai", aiRouter)
+
+  // Routes Internal (n8n)
+  app.route("/api/internal", internalRouter)
 
   return app
 }

@@ -28,15 +28,23 @@ services:
       - SMTP_PORT=1025
     labels:
       - "traefik.enable=true"
+
       # Router API
       - "traefik.http.routers.${SERVICE_NAME}-api.rule=Host(`${DOMAIN_NAME_API}`)"
       - "traefik.http.routers.${SERVICE_NAME}-api.entrypoints=websecure"
       - "traefik.http.routers.${SERVICE_NAME}-api.tls.certresolver=myresolver"
       - "traefik.http.services.${SERVICE_NAME}-api.loadbalancer.server.port=3000"
+
       # Rate Limit
       - "traefik.http.middlewares.limit-api.ratelimit.average=100"
       - "traefik.http.middlewares.limit-api.ratelimit.burst=50"
       - "traefik.http.routers.${SERVICE_NAME}-api.middlewares=limit-api"
+
+      # Router n8n
+      - "traefik.http.routers.${SERVICE_NAME}-n8n.rule=Host(`${DOMAIN_NAME_N8N}`)"
+      - "traefik.http.routers.${SERVICE_NAME}-n8n.entrypoints=websecure"
+      - "traefik.http.routers.${SERVICE_NAME}-n8n.tls.certresolver=myresolver"
+      - "traefik.http.services.${SERVICE_NAME}-n8n.loadbalancer.server.port=5678"
 
   # --- FRONTEND (WEB) ---
   web:
@@ -64,6 +72,7 @@ services:
       - POSTGRES_DB=mydb
     volumes:
       - db_data:/var/lib/postgresql/data
+      - ./apps/automation/seed/init-n8n.sql:/docker-entrypoint-initdb.d/init-n8n.sql
 
   redis:
     image: redis:7-alpine
@@ -101,8 +110,45 @@ services:
       - "traefik.http.middlewares.auth.basicauth.users=admin:$$apr1$$mTp02pz/$$JgD44iCfTvV5g6ORuzrJJ."
       - "traefik.http.routers.${SERVICE_NAME}-mail.middlewares=auth"
 
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: gen-ai-starter-kit-n8n
+    restart: always
+    ports:
+      - "5678:5678"
+    environment:
+      # En local/docker, on utilise souvent le nom du service pour communiquer
+      - N8N_HOST=n8n
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=development
+      # L'URL publique (pour les webhooks depuis ton navigateur)
+      - WEBHOOK_URL=http://localhost:5678/
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET}
+      - N8N_BASIC_AUTH_ACTIVE=false
+      - N8N_USER_MANAGEMENT_DISABLED=false
+      # IMPORTANT : Pour que n8n utilise Postgres et Redis définis plus haut
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=db
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=mydb
+      - DB_POSTGRESDB_USER=app_user
+      - DB_POSTGRESDB_PASSWORD=${DB_PASSWORD}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_ADMIN_EMAIL=${N8N_ADMIN_EMAIL}
+      - N8N_ADMIN_PASSWORD=${N8N_ADMIN_PASSWORD}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      - db
+      - redis
+    networks:
+      - default
+      - web_network
+
 volumes:
   db_data:
+  n8n_data:
 
 networks:
   web_network:

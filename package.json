@@ -1,0 +1,20 @@
+{
+  "name": "gen-ai-starter-kit",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "--- ORCHESTRATION ---": "---",
+    "dev": "docker compose -f docker-compose.dev.yml up -d && echo '🚀 Infra ready. Run npm run dev in apps/api and apps/web'",
+    "stop": "docker compose -f docker-compose.dev.yml stop",
+    "reset": "docker compose -f docker-compose.dev.yml down -v && docker compose -f docker-compose.dev.yml up -d",
+    "--- N8N GITOPS ---": "---",
+    "n8n:export": "docker exec -u node gen-ai-starter-kit-n8n mkdir -p /home/node/backups && docker exec -u node gen-ai-starter-kit-n8n n8n export:workflow --backup --output=/home/node/backups/ && (docker exec -u node gen-ai-starter-kit-n8n n8n export:credentials --all --encrypted --output=/home/node/backups/credentials.json || true) && docker cp gen-ai-starter-kit-n8n:/home/node/backups/. ./apps/automation/workflows/",
+    "n8n:import": "docker cp ./apps/automation/workflows/. gen-ai-starter-kit-n8n:/home/node/backups/ && docker exec -u node gen-ai-starter-kit-n8n n8n import:workflow --input=/home/node/backups/ && docker exec -u node gen-ai-starter-kit-n8n n8n import:credentials --input=/home/node/backups/credentials.json",
+    "n8n:seed:save": "docker exec gen-ai-starter-kit-db pg_dump -U app_user -d mydb --clean --if-exists > apps/automation/seed/init-n8n.sql",
+    "--- DATABASE ---": "---",
+    "db:studio": "cd apps/api && npm run db:studio",
+    "db:migrate": "cd apps/api && npm run db:migrate"
+  }
+}

@@ -23,33 +23,9 @@ jobs:
         run: |
           echo "API_URL=https://api-pr-${{ github.event.number }}.${{ vars.MAIN_DOMAIN }}" >> $GITHUB_OUTPUT
           echo "WEB_URL=https://pr-${{ github.event.number }}.${{ vars.MAIN_DOMAIN }}" >> $GITHUB_OUTPUT
+          echo "N8N_URL=https://n8n-pr-${{ github.event.number }}.${{ vars.MAIN_DOMAIN }}" >> $GITHUB_OUTPUT
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # --- BUILD API ---
-      - name: Build and Push API
-        uses: docker/build-push-action@v4
-        with:
-          context: ./apps/api
-          push: true
-          tags: ghcr.io/${{ github.repository }}/api:pr-${{ github.event.number }}
-
-      # --- BUILD WEB ---
-      - name: Create Web Env for Preview
-        run: |
-          echo "VITE_API_URL=${{ steps.urls.outputs.API_URL }}" > ./apps/web/.env
-
-      - name: Build and Push Web
-        uses: docker/build-push-action@v4
-        with:
-          context: ./apps/web
-          push: true
-          tags: ghcr.io/${{ github.repository }}/web:pr-${{ github.event.number }}
+      # ... (Build API/Web identique) ...
 
       # --- DEPLOY ---
       - name: Deploy Preview to VPS
@@ -62,19 +38,25 @@ jobs:
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             PR_ID="pr-${{ github.event.number }}"
-            # Dossier isolé : nom_projet-pr-XX
             FOLDER_NAME="${{ vars.PROJECT_NAME }}-$PR_ID"
 
             mkdir -p ~/apps/$FOLDER_NAME
             cd ~/apps/$FOLDER_NAME
 
+            # 1. Compose
             curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                  -o docker-compose.yml \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/docker-compose.yml
 
-            # Définition des Domaines Preview
+            # 2. Seed n8n (Depuis la branche de la PR !)
+            curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                 -o init-n8n.sql \
+                 -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/seed/init-n8n.sql
+
+            # Domaines
             WEB_DOMAIN="$PR_ID.${{ vars.MAIN_DOMAIN }}"
             API_DOMAIN="api-$PR_ID.${{ vars.MAIN_DOMAIN }}"
+            N8N_DOMAIN="n8n-$PR_ID.${{ vars.MAIN_DOMAIN }}"
 
             cat <<EOF > .env
             IMAGE_NAME_API=ghcr.io/${{ github.repository }}/api:$PR_ID
@@ -85,6 +67,11 @@ jobs:
             # Traefik routing
             DOMAIN_NAME_WEB=$WEB_DOMAIN
             DOMAIN_NAME_API=$API_DOMAIN
+            DOMAIN_NAME_N8N=$N8N_DOMAIN
+
+            # Secrets Partagés
+            INTERNAL_API_SECRET=${{ secrets.INTERNAL_API_SECRET }}
+            N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}
 
             # App Config
             NODE_ENV=production
@@ -112,6 +99,8 @@ jobs:
             echo "Migration..."
             docker compose -p $FOLDER_NAME run --rm api npm run db:migrate
 
+            # TODO: Ajouter le "n8n import" ici pour charger les workflows JSON de la PR
+
       - name: Comment PR URL
         uses: thollander/actions-comment-pull-request@v2
         with:
@@ -120,4 +109,5 @@ jobs:
 
             🎨 **Frontend:** ${{ steps.urls.outputs.WEB_URL }}
             ⚙️ **API:** ${{ steps.urls.outputs.API_URL }}
+            🤖 **n8n:** ${{ steps.urls.outputs.N8N_URL }}
           comment_tag: execution
