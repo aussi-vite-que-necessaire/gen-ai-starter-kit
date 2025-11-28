@@ -18,14 +18,14 @@ export const updateStatusAction = async (
 ) => {
   console.log(`[Action] Update Status for ${generationId}: ${input.status}`)
 
-  await db
-    .update(generation)
-    .set({
-      status: input.status,
-      displayMessage: input.displayMessage,
-      updatedAt: new Date(),
-    })
-    .where(eq(generation.id, generationId))
+  // await db
+  //   .update(generation)
+  //   .set({
+  //     status: input.status,
+  //     displayMessage: input.displayMessage,
+  //     updatedAt: new Date(),
+  //   })
+  //   .where(eq(generation.id, generationId))
 
   return { success: true, newStatus: input.status }
 }

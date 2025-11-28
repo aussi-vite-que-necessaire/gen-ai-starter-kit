@@ -1,11 +1,11 @@
 import { Hono } from "hono"
 import { zodToJsonSchema } from "zod-to-json-schema"
-import { ActionRegistry, ActionName } from "../../../core/processors" // Vérifie ce chemin d'import selon ta structure
+import { ActionRegistry, ActionName } from "../../../core/processors"
 import { env } from "../../../env"
 
 const app = new Hono()
 
-// 1. MIDDLEWARE SÉCURITÉ
+// Middleware sécurité
 app.use("*", async (c, next) => {
   const secret = c.req.header("x-internal-secret")
   if (secret !== env.INTERNAL_API_SECRET) {
@@ -14,23 +14,26 @@ app.use("*", async (c, next) => {
   await next()
 })
 
-// 2. DISCOVERY (GET /actions) -> Pour n8n
+// Discovery endpoint pour n8n
 app.get("/actions", (c) => {
-  // On transforme l'objet Registry en Tableau pour n8n
-  const actions = Object.entries(ActionRegistry).map(([key, value]) => ({
-    name: key,
-    slug: key, // ✅ CRITIQUE : n8n a besoin de 'slug' comme value
-    description: "Action du registre interne",
-    schema: zodToJsonSchema(value.schema),
-  }))
+  const actions = Object.entries(ActionRegistry).map(([key, value]) => {
+    // @ts-ignore
+    const schema = zodToJsonSchema(value.schema, { name: key })
 
-  // ✅ CRITIQUE : On renvoie le tableau directement (pas { actions: [...] })
+    return {
+      name: key,
+      slug: key,
+      description: "Action du registre interne",
+      schema: schema,
+    }
+  })
+
   return c.json(actions)
 })
 
-// 3. EXECUTE ACTION (POST /runs/:id/execute)
+// Execute action endpoint
 app.post("/runs/:id/execute", async (c) => {
-  // const id = c.req.param("id")
+  const id = c.req.param("id")
   const { action, payload } = await c.req.json()
 
   const processor = ActionRegistry[action as ActionName]
@@ -40,11 +43,8 @@ app.post("/runs/:id/execute", async (c) => {
 
   try {
     const input = processor.schema.parse(payload)
-    // Simule ou exécute l'action
-    // const result = await processor.handler(id, input)
-
-    // Pour le test, on renvoie juste que ça a marché
-    return c.json({ success: true, processed: true, action, input })
+    const result = await processor.handler(id, input)
+    return c.json({ success: true, ...result })
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 400)
   }
