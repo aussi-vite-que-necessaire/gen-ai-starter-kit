@@ -1,0 +1,11 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+echo "🤖 Auto-exporting n8n workflows..."
+
+# 1. Lance l'export (si Docker tourne)
+npm run n8n:export
+
+# 2. Ajoute les fichiers JSON générés au commit en cours
+# C'est l'étape clé : sans ça, les fichiers seraient modifiés mais pas commités
+git add apps/automation/workflows/

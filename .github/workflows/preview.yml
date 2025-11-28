@@ -16,13 +16,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # --- CALCUL DES URLS ---
-      # On prefixe ton domaine principal par pr-XX
+      # 1. FIX CASE SENSITIVITY
+      - name: Lowercase Repo Name
+        run: |
+          echo "REPO_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
+
+      # 2. CALCUL DES URLS
       - name: Calculate Preview URLs
         id: urls
         run: |
           echo "API_URL=https://api-pr-${{ github.event.number }}.${{ vars.MAIN_DOMAIN }}" >> $GITHUB_OUTPUT
           echo "WEB_URL=https://pr-${{ github.event.number }}.${{ vars.MAIN_DOMAIN }}" >> $GITHUB_OUTPUT
+          echo "N8N_URL=https://n8n-pr-${{ github.event.number }}.${{ vars.MAIN_DOMAIN }}" >> $GITHUB_OUTPUT
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v2
@@ -31,15 +36,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- BUILD API ---
+      # 3. BUILD API
       - name: Build and Push API
         uses: docker/build-push-action@v4
         with:
           context: ./apps/api
           push: true
-          tags: ghcr.io/${{ github.repository }}/api:pr-${{ github.event.number }}
+          tags: ghcr.io/${{ env.REPO_LOWER }}/api:pr-${{ github.event.number }}
 
-      # --- BUILD WEB ---
+      # 4. BUILD WEB
       - name: Create Web Env for Preview
         run: |
           echo "VITE_API_URL=${{ steps.urls.outputs.API_URL }}" > ./apps/web/.env
@@ -49,9 +54,9 @@ jobs:
         with:
           context: ./apps/web
           push: true
-          tags: ghcr.io/${{ github.repository }}/web:pr-${{ github.event.number }}
+          tags: ghcr.io/${{ env.REPO_LOWER }}/web:pr-${{ github.event.number }}
 
-      # --- DEPLOY ---
+      # 5. DEPLOY TO VPS
       - name: Deploy Preview to VPS
         uses: appleboy/ssh-action@master
         with:
@@ -61,56 +66,106 @@ jobs:
           script: |
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
+            # --- VARIABLES ---
             PR_ID="pr-${{ github.event.number }}"
-            # Dossier isolé : nom_projet-pr-XX
             FOLDER_NAME="${{ vars.PROJECT_NAME }}-$PR_ID"
+            REPO_LOWER="${{ env.REPO_LOWER }}"
+
+            WEB_DOMAIN="$PR_ID.${{ vars.MAIN_DOMAIN }}"
+            API_DOMAIN="api-$PR_ID.${{ vars.MAIN_DOMAIN }}"
+            N8N_DOMAIN="n8n-$PR_ID.${{ vars.MAIN_DOMAIN }}"
 
             mkdir -p ~/apps/$FOLDER_NAME
             cd ~/apps/$FOLDER_NAME
 
+            # --- FICHIERS ---
+            # Création du dossier nécessaire pour le volume Docker
+            mkdir -p apps/automation/seed
+
+            # 1. Docker Compose
             curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                  -o docker-compose.yml \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/docker-compose.yml
 
-            # Définition des Domaines Preview
-            WEB_DOMAIN="$PR_ID.${{ vars.MAIN_DOMAIN }}"
-            API_DOMAIN="api-$PR_ID.${{ vars.MAIN_DOMAIN }}"
+            # 2. Script création DB (dans le sous-dossier car monté par volume)
+            curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                 -o apps/automation/seed/create-databases.sql \
+                 -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/seed/create-databases.sql
 
+            # 3. Seed n8n (A la RACINE pour simplifier l'injection manuelle)
+            curl -f -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                 -o init-n8n.sql \
+                 -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/seed/init-n8n.sql
+
+            # --- ENV ---
             cat <<EOF > .env
-            IMAGE_NAME_API=ghcr.io/${{ github.repository }}/api:$PR_ID
-            IMAGE_NAME_WEB=ghcr.io/${{ github.repository }}/web:$PR_ID
-            SERVICE_NAME=$FOLDER_NAME
+            IMAGE_NAME_API=ghcr.io/$REPO_LOWER/api:$PR_ID
+            IMAGE_NAME_WEB=ghcr.io/$REPO_LOWER/web:$PR_ID
+            PROJECT_NAME=$FOLDER_NAME
             ENV_TYPE=preview
 
-            # Traefik routing
             DOMAIN_NAME_WEB=$WEB_DOMAIN
             DOMAIN_NAME_API=$API_DOMAIN
+            DOMAIN_NAME_N8N=$N8N_DOMAIN
 
-            # App Config
+            N8N_URL=https://$N8N_DOMAIN
+            INTERNAL_API_SECRET=${{ secrets.INTERNAL_API_SECRET }}
+            N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+
             NODE_ENV=production
             PORT=3000
             FRONTEND_URL=https://$WEB_DOMAIN
 
-            DATABASE_URL=postgresql://app_user:${{ secrets.DB_PASSWORD }}@db:5432/mydb
+            DATABASE_URL=postgresql://app_user:${{ secrets.DB_PASSWORD }}@db:5432/webapp
             REDIS_HOST=redis
             REDIS_PORT=6379
 
-            BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}
-            BETTER_AUTH_URL=https://$API_DOMAIN
-
             DB_PASSWORD=${{ secrets.DB_PASSWORD }}
             POSTGRES_USER=app_user
-            POSTGRES_DB=mydb
+            POSTGRES_DB=webapp
+
+            BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}
+            BETTER_AUTH_URL=https://$API_DOMAIN
             EOF
 
+            # --- SEQUENCE DE DÉMARRAGE ROBUSTE ---
+
+            echo "📥 Pulling images..."
             docker compose pull
-            docker compose -p $FOLDER_NAME up -d --remove-orphans
 
-            echo "Attente DB..."
-            until docker compose -p $FOLDER_NAME exec -T db pg_isready -U app_user -d mydb; do sleep 2; done
+            echo "🧨 Reset DB (Clean Slate)..."
+            # Suppression du volume existant pour éviter les conflits de migration
+            docker compose -p $FOLDER_NAME down -v
 
-            echo "Migration..."
+            echo "🚀 Démarrage DB & Redis..."
+            # On ne lance que la DB pour l'instant
+            docker compose -p $FOLDER_NAME up -d db redis
+
+            echo "⏳ Attente disponibilité DB..."
+            until docker compose -p $FOLDER_NAME exec -T db pg_isready -U app_user -d webapp; do sleep 2; done
+
+            echo "🛠 Création explicite de la base n8n..."
+            docker compose -p $FOLDER_NAME exec -T db psql -U app_user -d webapp -c "CREATE DATABASE n8n;" || echo "Database n8n already exists"
+
+            echo "💉 Injection du Seed Admin n8n..."
+            # 1. Copie du fichier SQL (depuis la racine du dossier vers /tmp dans le conteneur)
+            docker compose -p $FOLDER_NAME cp init-n8n.sql db:/tmp/init-n8n.sql
+
+            # 2. Exécution du fichier SQL dans la base n8n
+            docker compose -p $FOLDER_NAME exec -T db psql -U app_user -d n8n -f /tmp/init-n8n.sql || echo "Seed failed"
+
+            echo "🕵️‍♂️ VÉRIFICATION..."
+            docker compose -p $FOLDER_NAME exec -T db psql -U app_user -d n8n -c 'SELECT email FROM "user";'
+
+            echo "📦 Migrations API..."
             docker compose -p $FOLDER_NAME run --rm api npm run db:migrate
+
+            echo "🚀 Démarrage Final (API, Web, n8n)..."
+            docker compose -p $FOLDER_NAME up -d
+
+            # (Optionnel) Import Workflows n8n si besoin
+            # docker compose -p $FOLDER_NAME exec -T n8n n8n import:workflow --input=/home/node/workflows/
 
       - name: Comment PR URL
         uses: thollander/actions-comment-pull-request@v2
@@ -120,4 +175,5 @@ jobs:
 
             🎨 **Frontend:** ${{ steps.urls.outputs.WEB_URL }}
             ⚙️ **API:** ${{ steps.urls.outputs.API_URL }}
+            🤖 **n8n:** ${{ steps.urls.outputs.N8N_URL }}
           comment_tag: execution

@@ -14,6 +14,18 @@ CREATE TABLE "account" (
 	"updatedAt" timestamp NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "generation" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" text NOT NULL,
+	"type" text NOT NULL,
+	"status" text DEFAULT 'PENDING' NOT NULL,
+	"display_message" text,
+	"result" jsonb,
+	"error" text,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
 CREATE TABLE "session" (
 	"id" text PRIMARY KEY NOT NULL,
 	"expiresAt" timestamp NOT NULL,

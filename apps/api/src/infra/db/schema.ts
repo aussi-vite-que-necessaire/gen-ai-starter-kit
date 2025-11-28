@@ -1,4 +1,11 @@
-import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core"
+import {
+  pgTable,
+  text,
+  timestamp,
+  boolean,
+  uuid,
+  jsonb,
+} from "drizzle-orm/pg-core"
 
 // --- TABLES BETTER-AUTH ---
 
@@ -50,4 +57,25 @@ export const verification = pgTable("verification", {
   expiresAt: timestamp("expiresAt").notNull(),
   createdAt: timestamp("createdAt"),
   updatedAt: timestamp("updatedAt"),
+})
+
+export const generation = pgTable("generation", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull(),
+
+  // Le type de workflow (ex: "landing-page")
+  type: text("type").notNull(),
+
+  // L'état actuel (ex: "GENERATING_IMAGES", "COMPLETED")
+  status: text("status").default("PENDING").notNull(),
+
+  // Un message pour l'utilisateur (ex: "Analyse de votre site en cours...")
+  displayMessage: text("display_message"),
+
+  // Le résultat final (seulement à la fin)
+  result: jsonb("result"),
+
+  error: text("error"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 })

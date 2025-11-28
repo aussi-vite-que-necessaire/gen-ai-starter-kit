@@ -1,36 +1,25 @@
 import { serve } from "@hono/node-server"
-import { Hono } from "hono"
-import { cors } from "hono/cors"
-import { logger } from "hono/logger"
 import { env } from "./env"
-import { auth } from "./infra/auth" // Import de l'auth
+import { db } from "./infra/db"
+import { createApp } from "./app"
 
-const app = new Hono()
+// 1. Initialiser l'Infra Async
+const redisUrl = `redis://${env.REDIS_HOST}:${env.REDIS_PORT}`
 
-// 1. CORS : Très important pour l'Auth (cookies)
-app.use(
-  "*",
-  cors({
-    origin: env.FRONTEND_URL,
-    allowHeaders: ["Content-Type", "Authorization"],
-    allowMethods: ["POST", "GET", "OPTIONS"],
-    exposeHeaders: ["Content-Length"],
-    maxAge: 600,
-    credentials: true, // OBLIGATOIRE pour que les cookies passent
-  })
-)
+// 2. Initialiser l'App Web
+const app = createApp()
 
-app.use("*", logger())
+console.log("🚀 Workflow Worker started")
 
-// 2. Montage des routes Auth
-// Hono intercepte toutes les requêtes qui commencent par /api/auth/*
-app.on(["POST", "GET"], "/api/auth/**", (c) => {
-  return auth.handler(c.req.raw)
-})
-
-// ... Le reste de tes routes (health, etc.)
-
+// 4. Lancer le Serveur HTTP
+console.log(`🚀 Server running on port ${env.PORT}`)
 serve({
   fetch: app.fetch,
   port: env.PORT,
 })
+
+// // Graceful Shutdown
+// process.on("SIGTERM", async () => {
+//   await worker.close()
+//   process.exit(0)
+// })
