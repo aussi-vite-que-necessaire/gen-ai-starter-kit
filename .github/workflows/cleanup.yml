@@ -16,18 +16,26 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             PR_ID="pr-${{ github.event.number }}"
-            # On utilise la variable PROJECT_NAME
+            # On doit recalculer le nom unique ici aussi
             FOLDER_NAME="${{ vars.PROJECT_NAME }}-$PR_ID"
-
             TARGET_DIR="$HOME/apps/$FOLDER_NAME"
 
             if [ -d "$TARGET_DIR" ]; then
               cd "$TARGET_DIR"
-              echo "🗑  Arrêt des services..."
+              echo "🛑 Arrêt des services pour $FOLDER_NAME..."
+              # Supprime les conteneurs et les volumes SPÉCIFIQUES à cette PR
               docker compose -p $FOLDER_NAME down --volumes --remove-orphans
               
               cd ..
-              echo "🗑  Suppression du dossier..."
+              echo "🗑 Suppression du dossier..."
               rm -rf "$TARGET_DIR"
-              echo "✅ Cleaned up $FOLDER_NAME"
+              
+              echo "✨ Grand Nettoyage du serveur..."
+              # Ici on peut y aller : on supprime toutes les images qui ne servent plus
+              # (Notamment celles de la PR qu'on vient de tuer)
+              docker system prune -a -f
+              
+              echo "✅ Cleaned up $FOLDER_NAME successfully"
+            else
+              echo "⚠️ Dossier $TARGET_DIR introuvable, rien à faire."
             fi

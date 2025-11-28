@@ -1,0 +1,22 @@
+name: Server Maintenance
+
+on:
+  schedule:
+    - cron: "0 4 * * 0" # Tous les dimanches à 4h du matin
+  workflow_dispatch: # Permet de le lancer à la main si besoin
+
+jobs:
+  janitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH Cleaner
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            echo "🧹 Maintenance hebdomadaire..."
+            docker system prune -a -f
+            # On évite le volume prune en auto, c'est plus prudent
+            echo "✅ Serveur nettoyé."

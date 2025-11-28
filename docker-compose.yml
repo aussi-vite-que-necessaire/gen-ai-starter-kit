@@ -7,47 +7,30 @@ services:
       - web_network
       - default
     environment:
-      # Config Générale
-      - NODE_ENV=${NODE_ENV} # production ou preview (défini dans le .env généré)
+      - NODE_ENV=${NODE_ENV}
       - PORT=3000
-
-      # Database & Cache (Injectés depuis le .env généré)
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
-
-      # Sécurité & Auth (Les lignes qui manquaient !)
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - BETTER_AUTH_URL=${BETTER_AUTH_URL}
-      - FRONTEND_URL=${FRONTEND_URL} # Pour le CORS
-
+      - FRONTEND_URL=${FRONTEND_URL}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-
       - N8N_URL=${N8N_URL}
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET}
-
-      # Emails (Interne Docker)
       - SMTP_HOST=mailpit
       - SMTP_PORT=1025
     labels:
       - "traefik.enable=true"
-
       # Router API
       - "traefik.http.routers.${PROJECT_NAME}-api.rule=Host(`${DOMAIN_NAME_API}`)"
       - "traefik.http.routers.${PROJECT_NAME}-api.entrypoints=websecure"
       - "traefik.http.routers.${PROJECT_NAME}-api.tls.certresolver=myresolver"
       - "traefik.http.services.${PROJECT_NAME}-api.loadbalancer.server.port=3000"
-
       # Rate Limit
       - "traefik.http.middlewares.limit-api.ratelimit.average=100"
       - "traefik.http.middlewares.limit-api.ratelimit.burst=50"
       - "traefik.http.routers.${PROJECT_NAME}-api.middlewares=limit-api"
-
-      # Router n8n
-      - "traefik.http.routers.${PROJECT_NAME}-n8n.rule=Host(`${DOMAIN_NAME_N8N}`)"
-      - "traefik.http.routers.${PROJECT_NAME}-n8n.entrypoints=websecure"
-      - "traefik.http.routers.${PROJECT_NAME}-n8n.tls.certresolver=myresolver"
-      - "traefik.http.services.${PROJECT_NAME}-n8n.loadbalancer.server.port=5678"
 
   # --- FRONTEND (WEB) ---
   web:
@@ -72,9 +55,12 @@ services:
     environment:
       - POSTGRES_USER=app_user
       - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_DB=mydb
+      - POSTGRES_DB=webapp # ✅ CORRIGÉ (C'était mydb)
     volumes:
       - db_data:/var/lib/postgresql/data
+      # ✅ CRITIQUE : Le script qui crée la base 'n8n' doit être là aussi !
+      - ./apps/automation/seed/create-databases.sql:/docker-entrypoint-initdb.d/create-databases.sql
+      # Le script User Admin (optionnel, selon si tu l'as gardé ou non)
       - ./apps/automation/seed/init-n8n.sql:/docker-entrypoint-initdb.d/init-n8n.sql
 
   redis:
@@ -90,7 +76,7 @@ services:
       - default
     environment:
       - POSTGRES_HOST=db
-      - POSTGRES_DB=mydb
+      - POSTGRES_DB=webapp # ✅ CORRIGÉ
       - POSTGRES_USER=app_user
       - POSTGRES_PASSWORD=${DB_PASSWORD}
       - SCHEDULE=@daily
@@ -113,6 +99,7 @@ services:
       - "traefik.http.middlewares.auth.basicauth.users=admin:$$apr1$$mTp02pz/$$JgD44iCfTvV5g6ORuzrJJ."
       - "traefik.http.routers.${PROJECT_NAME}-mail.middlewares=auth"
 
+  # --- N8N ---
   n8n:
     image: n8nio/n8n:latest
     container_name: gen-ai-starter-kit-n8n
@@ -120,22 +107,23 @@ services:
     ports:
       - "5678:5678"
     environment:
-      # En local/docker, on utilise souvent le nom du service pour communiquer
       - N8N_HOST=n8n
       - N8N_PORT=5678
-      - N8N_PROTOCOL=http
-      - NODE_ENV=development
-      # L'URL publique (pour les webhooks depuis ton navigateur)
-      - WEBHOOK_URL=http://localhost:5678/
+      - N8N_PROTOCOL=https # ✅ HTTPS en prod
+      - NODE_ENV=production
+      # L'URL est définie dans le .env généré par le script de déploiement
+      - WEBHOOK_URL=${N8N_URL}
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET}
-      # IMPORTANT : Pour que n8n utilise Postgres et Redis définis plus haut
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_BASIC_AUTH_ACTIVE=false
+
+      # Connexion DB n8n
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=db
       - DB_POSTGRESDB_PORT=5432
-      - DB_POSTGRESDB_DATABASE=mydb
+      - DB_POSTGRESDB_DATABASE=n8n # ✅ Utilise sa propre base
       - DB_POSTGRESDB_USER=app_user
       - DB_POSTGRESDB_PASSWORD=${DB_PASSWORD}
-      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:
@@ -144,6 +132,13 @@ services:
     networks:
       - default
       - web_network
+    # 👇 DÉPLACÉ ICI (C'est la place correcte)
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${PROJECT_NAME}-n8n.rule=Host(`${DOMAIN_NAME_N8N}`)"
+      - "traefik.http.routers.${PROJECT_NAME}-n8n.entrypoints=websecure"
+      - "traefik.http.routers.${PROJECT_NAME}-n8n.tls.certresolver=myresolver"
+      - "traefik.http.services.${PROJECT_NAME}-n8n.loadbalancer.server.port=5678"
 
 volumes:
   db_data:
