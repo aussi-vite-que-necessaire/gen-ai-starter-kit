@@ -87,6 +87,10 @@ jobs:
                  -o init-n8n.sql \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/seed/init-n8n.sql
 
+            curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                 -o create-databases.sql \
+                 -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/seed/create-databases.sql
+
             # Génération .env
             cat <<EOF > .env
             IMAGE_NAME_API=ghcr.io/$REPO_LOWER/api:$PR_ID
