@@ -30,7 +30,7 @@ _Port Postgres local : `5433` (pour éviter les conflits)_
 **2. Setup de l'environnement**
 
 ```bash
-export DATABASE_URL="postgresql://app_user:dev_password@localhost:5433/mydb"
+export DATABASE_URL="postgresql://app_user:dev_password@localhost:5433/webapp"
 npm install
 npm run db:migrate
 ```
