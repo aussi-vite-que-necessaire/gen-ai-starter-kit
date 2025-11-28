@@ -90,6 +90,7 @@ jobs:
             # --- N8N SECRETS ---
             INTERNAL_API_SECRET=${{ secrets.INTERNAL_API_SECRET }}
             N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} 
 
             # --- DB & REDIS ---
             DATABASE_URL=postgresql://app_user:${{ secrets.DB_PASSWORD }}@db:5432/mydb

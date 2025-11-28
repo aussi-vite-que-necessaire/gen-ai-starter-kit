@@ -72,6 +72,7 @@ jobs:
             # Secrets Partagés
             INTERNAL_API_SECRET=${{ secrets.INTERNAL_API_SECRET }}
             N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}  # 👈 AJOUTÉ ICI (Fix Warning)
 
             # App Config
             NODE_ENV=production
