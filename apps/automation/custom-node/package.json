@@ -1,0 +1,29 @@
+{
+  "name": "n8n-nodes-genai-app",
+  "version": "1.0.0",
+  "description": "Custom Node GenAI",
+  "keywords": [
+    "n8n-community-node-package"
+  ],
+  "license": "MIT",
+  "main": "dist/index.js",
+  "n8n": {
+    "nodes": [
+      "dist/nodes/GenAiApp/GenAiApp.node.js"
+    ]
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "n8n-workflow": "*",
+    "typescript": "^4.8.0"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  }
+}

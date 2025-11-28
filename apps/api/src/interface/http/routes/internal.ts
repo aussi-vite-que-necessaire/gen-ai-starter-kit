@@ -1,6 +1,6 @@
 import { Hono } from "hono"
 import { zodToJsonSchema } from "zod-to-json-schema"
-import { ActionRegistry, ActionName } from "../../../core/processors"
+import { ActionRegistry, ActionName } from "../../../core/processors" // Vérifie ce chemin d'import selon ta structure
 import { env } from "../../../env"
 
 const app = new Hono()
@@ -8,7 +8,6 @@ const app = new Hono()
 // 1. MIDDLEWARE SÉCURITÉ
 app.use("*", async (c, next) => {
   const secret = c.req.header("x-internal-secret")
-  // On compare avec le secret du .env
   if (secret !== env.INTERNAL_API_SECRET) {
     return c.json({ error: "Unauthorized" }, 403)
   }
@@ -17,17 +16,21 @@ app.use("*", async (c, next) => {
 
 // 2. DISCOVERY (GET /actions) -> Pour n8n
 app.get("/actions", (c) => {
+  // On transforme l'objet Registry en Tableau pour n8n
   const actions = Object.entries(ActionRegistry).map(([key, value]) => ({
     name: key,
-    // On transforme le Zod en JSON Schema pour l'UI de n8n
+    slug: key, // ✅ CRITIQUE : n8n a besoin de 'slug' comme value
+    description: "Action du registre interne",
     schema: zodToJsonSchema(value.schema),
   }))
-  return c.json({ actions })
+
+  // ✅ CRITIQUE : On renvoie le tableau directement (pas { actions: [...] })
+  return c.json(actions)
 })
 
 // 3. EXECUTE ACTION (POST /runs/:id/execute)
 app.post("/runs/:id/execute", async (c) => {
-  const id = c.req.param("id")
+  // const id = c.req.param("id")
   const { action, payload } = await c.req.json()
 
   const processor = ActionRegistry[action as ActionName]
@@ -36,15 +39,13 @@ app.post("/runs/:id/execute", async (c) => {
   }
 
   try {
-    // Validation stricte
     const input = processor.schema.parse(payload)
+    // Simule ou exécute l'action
+    // const result = await processor.handler(id, input)
 
-    // Exécution
-    const result = await processor.handler(id, input)
-
-    return c.json({ success: true, result })
+    // Pour le test, on renvoie juste que ça a marché
+    return c.json({ success: true, processed: true, action, input })
   } catch (error: any) {
-    console.error(`Error in action ${action}:`, error)
     return c.json({ success: false, error: error.message }, 400)
   }
 })

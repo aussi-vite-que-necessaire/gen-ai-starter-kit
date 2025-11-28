@@ -1,0 +1,84 @@
+{
+  "updatedAt": "2025-11-28T21:35:59.028Z",
+  "createdAt": "2025-11-28T20:52:39.781Z",
+  "id": "qN0tbdDK5ltRLCI4",
+  "name": "My workflow",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "1582e7a3-a801-4e76-a274-ff4cac32aa8f",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "actionSlug": "update-status",
+        "fields": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "CUSTOM.genAiApp",
+      "typeVersion": 1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "8f3ce243-ad4c-42ac-9f96-74bf1157b42c",
+      "name": "GenAI App"
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "GenAI App",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {},
+  "versionId": "b271b5ff-0ed0-4169-a39a-f24dd93c9f8e",
+  "versionCounter": 7,
+  "triggerCount": 0,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2025-11-28T20:52:39.781Z",
+      "createdAt": "2025-11-28T20:52:39.781Z",
+      "role": "workflow:owner",
+      "workflowId": "qN0tbdDK5ltRLCI4",
+      "projectId": "UB6VcGqVOrq3em4j",
+      "project": {
+        "updatedAt": "2025-11-28T20:51:41.889Z",
+        "createdAt": "2025-11-28T20:51:10.705Z",
+        "id": "UB6VcGqVOrq3em4j",
+        "name": "Manu Bernard <sys@avqn.ch>",
+        "type": "personal",
+        "icon": null,
+        "description": null
+      }
+    }
+  ]
+}

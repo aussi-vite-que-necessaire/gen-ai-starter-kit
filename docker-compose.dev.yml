@@ -45,6 +45,8 @@ services:
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET}
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
 
+      - GENAI_API_URL=http://host.docker.internal:3000
+
       # Connexion DB (Séparée)
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=db
@@ -54,6 +56,8 @@ services:
       - DB_POSTGRESDB_PASSWORD=${DB_PASSWORD}
     volumes:
       - n8n_data:/home/node/.n8n
+      - ./apps/automation/custom-node:/home/node/.n8n/custom/n8n-nodes-genai-app
+
     depends_on:
       - db
       - redis
