@@ -189,27 +189,23 @@ jobs:
             sleep 10
 
             echo "📥 Import des workflows et credentials n8n..."
-            mkdir -p n8n-workflows n8n-credentials
 
-            # Télécharge les workflows
-            for file in CE1aB6M2zzy6mHq7 FdlYe3ZEhP2R6L66 gK3EwEQLmGjhUuy9 MegPrvZxisBRYhLw O59HjSzD4t2zNIRv qN0tbdDK5ltRLCI4 YJBSKUGzYtUKymEu; do
-              curl -sf -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                   -o "n8n-workflows/${file}.json" \
-                   -L "https://raw.githubusercontent.com/${{ github.repository }}/main/apps/automation/workflows/${file}.json" || true
-            done
-
-            # Télécharge les credentials (dossier séparé)
+            # Télécharge credentials à la racine
             curl -sf -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                 -o "n8n-credentials/credentials.json" \
+                 -o credentials.json \
                  -L "https://raw.githubusercontent.com/${{ github.repository }}/main/apps/automation/workflows/credentials.json" || true
 
-            # Copie dans n8n (dossiers séparés)
-            docker compose exec -u node -T n8n mkdir -p /home/node/backups/workflows /home/node/backups/credentials
-            docker compose cp n8n-workflows/. n8n:/home/node/backups/workflows/
-            docker compose cp n8n-credentials/. n8n:/home/node/backups/credentials/
+            # Import credentials
+            docker compose cp credentials.json n8n:/tmp/credentials.json
+            docker compose exec -u node -T n8n n8n import:credentials --input=/tmp/credentials.json || echo "⚠️ Credentials import failed"
 
-            # Import credentials puis workflows
-            docker compose exec -u node -T n8n n8n import:credentials --input=/home/node/backups/credentials/credentials.json || echo "⚠️ Credentials import failed"
-            docker compose exec -u node -T n8n n8n import:workflow --input=/home/node/backups/workflows/ || echo "⚠️ Workflow import failed"
+            # Import workflows un par un
+            for file in CE1aB6M2zzy6mHq7 FdlYe3ZEhP2R6L66 gK3EwEQLmGjhUuy9 MegPrvZxisBRYhLw O59HjSzD4t2zNIRv qN0tbdDK5ltRLCI4 YJBSKUGzYtUKymEu; do
+              curl -sf -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                   -o "${file}.json" \
+                   -L "https://raw.githubusercontent.com/${{ github.repository }}/main/apps/automation/workflows/${file}.json" || continue
+              docker compose cp "${file}.json" n8n:/tmp/workflow.json
+              docker compose exec -u node -T n8n n8n import:workflow --input=/tmp/workflow.json || echo "⚠️ Workflow ${file} import failed"
+            done
 
             echo "✅ Déployé sur https://${{ vars.MAIN_DOMAIN }}"
