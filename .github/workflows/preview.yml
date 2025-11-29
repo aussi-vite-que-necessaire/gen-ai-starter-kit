@@ -83,6 +83,7 @@ jobs:
             # --- FICHIERS ---
             # Création du dossier nécessaire pour le volume Docker
             mkdir -p apps/automation/seed
+            mkdir -p apps/automation/custom-node
 
             # 1. Docker Compose
             curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
@@ -98,6 +99,24 @@ jobs:
             curl -f -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                  -o init-n8n.sql \
                  -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/seed/init-n8n.sql
+
+            # 4. Custom n8n nodes
+            echo "📦 Téléchargement custom nodes..."
+            curl -sf -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                 -o apps/automation/custom-node/package.json \
+                 -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/custom-node/package.json
+
+            mkdir -p apps/automation/custom-node/dist/nodes/generated
+            for file in index.js; do
+              curl -sf -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                   -o "apps/automation/custom-node/dist/${file}" \
+                   -L "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/custom-node/dist/${file}" || true
+            done
+            for file in GenAiUpdateStatus.node.js GenAiPageGenerationTrigger.node.js GenAiPageGenerationComplete.node.js; do
+              curl -sf -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                   -o "apps/automation/custom-node/dist/nodes/generated/${file}" \
+                   -L "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/custom-node/dist/nodes/generated/${file}" || true
+            done
 
             # --- ENV ---
             cat <<EOF > .env
@@ -166,8 +185,18 @@ jobs:
             echo "🚀 Démarrage Final (API, Web, n8n)..."
             docker compose -p $FOLDER_NAME up -d
 
-            # (Optionnel) Import Workflows n8n si besoin
-            # docker compose -p $FOLDER_NAME exec -T n8n n8n import:workflow --input=/home/node/workflows/
+            echo "⏳ Attente démarrage n8n..."
+            sleep 10
+
+            echo "📥 Import des workflows n8n..."
+            mkdir -p n8n-workflows
+            for file in CE1aB6M2zzy6mHq7 FdlYe3ZEhP2R6L66 gK3EwEQLmGjhUuy9 MegPrvZxisBRYhLw O59HjSzD4t2zNIRv qN0tbdDK5ltRLCI4 YJBSKUGzYtUKymEu; do
+              curl -sf -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                   -o "n8n-workflows/${file}.json" \
+                   -L "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/workflows/${file}.json" || true
+            done
+            docker compose -p $FOLDER_NAME cp n8n-workflows/. n8n:/home/node/backups/
+            docker compose -p $FOLDER_NAME exec -u node -T n8n n8n import:workflow --input=/home/node/backups/ || echo "⚠️ Workflow import failed"
 
       - name: Comment PR URL
         uses: thollander/actions-comment-pull-request@v2
