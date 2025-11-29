@@ -1,6 +1,11 @@
-// Configuration des queues BullMQ
+import type { WorkflowType } from "@genai/shared/workflows"
 
-export type QueueName = "default" | "page-generation"
+// =============================================================================
+// QUEUE CONFIGURATION
+// QueueName = tous les workflow types + "default"
+// =============================================================================
+
+export type QueueName = WorkflowType | "default"
 
 export interface QueueConfig {
   concurrency: number

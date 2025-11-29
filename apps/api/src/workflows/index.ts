@@ -24,7 +24,7 @@ export async function startWorkflow(
   const webhookPath = handler.id // webhookPath = id du workflow
 
   // 1. Valide le payload
-  const validPayload = handler.payloadSchema.parse(payload)
+  const validPayload = handler.payload.parse(payload)
 
   // 2. Crée le workflow en DB
   const [workflow] = await db

@@ -1,18 +1,10 @@
 import { Hono } from "hono"
 import { eq, desc, and } from "drizzle-orm"
-import { auth, requireAuth } from "../auth"
+import { requireAuth, type AuthEnv } from "../auth"
 import { db } from "../db"
 import { pages } from "../db/schema"
 
-// Type pour le contexte Hono avec user
-type Env = {
-  Variables: {
-    user: typeof auth.$Infer.Session.user
-    session: typeof auth.$Infer.Session.session
-  }
-}
-
-const app = new Hono<Env>()
+const app = new Hono<AuthEnv>()
 
 // Toutes les routes necessitent l'auth
 app.use("*", requireAuth)

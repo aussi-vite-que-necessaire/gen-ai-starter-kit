@@ -2,20 +2,12 @@ import { Hono } from "hono"
 import { z } from "zod"
 import { zValidator } from "@hono/zod-validator"
 import { eq } from "drizzle-orm"
-import { auth, requireAuth } from "../auth"
+import { requireAuth, type AuthEnv } from "../auth"
 import { db } from "../db"
 import { workflows } from "../db/schema"
-import { startWorkflow, handlers, isValidWorkflowType } from "../workflows"
+import { startWorkflow, isValidWorkflowType } from "../workflows"
 
-// Type pour le contexte Hono avec user
-type Env = {
-  Variables: {
-    user: typeof auth.$Infer.Session.user
-    session: typeof auth.$Infer.Session.session
-  }
-}
-
-const app = new Hono<Env>()
+const app = new Hono<AuthEnv>()
 
 // --- ROUTES PUBLIQUES ---
 

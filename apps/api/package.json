@@ -13,6 +13,7 @@
     "test:ui": "vitest --ui"
   },
   "dependencies": {
+    "@genai/shared": "*",
     "@hono/node-server": "^1.13.7",
     "@hono/zod-validator": "^0.7.5",
     "better-auth": "^1.4.1",

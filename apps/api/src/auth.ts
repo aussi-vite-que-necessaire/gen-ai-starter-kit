@@ -17,7 +17,7 @@ export const auth = betterAuth({
 })
 
 // Type pour les variables injectees dans le contexte Hono
-type AuthEnv = {
+export type AuthEnv = {
   Variables: {
     user: typeof auth.$Infer.Session.user
     session: typeof auth.$Infer.Session.session
@@ -37,4 +37,3 @@ export const requireAuth = createMiddleware<AuthEnv>(async (c, next) => {
 
   await next()
 })
-

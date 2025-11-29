@@ -1,14 +1,21 @@
+import {
+  workflowSchemas,
+  isValidWorkflowType,
+  type WorkflowType,
+} from "@genai/shared/workflows"
 import { pageGenerationHandler } from "./page-generation"
 
-// Registry des handlers
+// =============================================================================
+// HANDLERS REGISTRY
+// Extends shared schemas with API-specific logic (saveResult, queue config)
+// =============================================================================
+
 export const handlers = {
-  [pageGenerationHandler.id]: pageGenerationHandler,
+  "page-generation": {
+    ...workflowSchemas["page-generation"],
+    ...pageGenerationHandler,
+  },
 } as const
 
-export type WorkflowType = keyof typeof handlers
-
-// Helper pour vérifier si un type existe
-export function isValidWorkflowType(type: string): type is WorkflowType {
-  return type in handlers
-}
-
+// Re-export from shared (single source of truth)
+export { isValidWorkflowType, type WorkflowType }

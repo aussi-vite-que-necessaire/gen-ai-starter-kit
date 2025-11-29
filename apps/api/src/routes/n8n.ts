@@ -87,8 +87,8 @@ app.post("/:type/complete", zValidator("json", completeSchema), async (c) => {
   }
 
   // 2. Valide le payload et le result
-  const payload = handler.payloadSchema.parse(workflow.payload)
-  const validResult = handler.resultSchema.parse(result)
+  const payload = handler.payload.parse(workflow.payload)
+  const validResult = handler.result.parse(result)
 
   // 3. Sauvegarde dans les tables métier (passe le payload directement)
   const saveResponse = await handler.saveResult(payload, validResult)

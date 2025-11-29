@@ -2,7 +2,8 @@
   "name": "gen-ai-starter-kit",
   "private": true,
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
     "--- ORCHESTRATION ---": "---",

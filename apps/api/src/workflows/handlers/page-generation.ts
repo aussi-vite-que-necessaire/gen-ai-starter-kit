@@ -1,28 +1,19 @@
-import { z } from "zod"
+import type {
+  PageGenerationPayload,
+  PageGenerationResult,
+} from "@genai/shared/workflows"
 import { db } from "../../db"
 import { pages } from "../../db/schema"
 
-// --- SCHEMAS ---
+// =============================================================================
+// SAVE RESULT
+// Business logic executed when n8n completes the workflow
+// =============================================================================
 
-export const payloadSchema = z.object({
-  userId: z.string(),
-  prompt: z.string().optional(),
-})
-
-export const resultSchema = z.object({
-  title: z.string(),
-  content: z.unknown(),
-})
-
-// --- TYPES ---
-
-export type Payload = z.infer<typeof payloadSchema>
-export type Result = z.infer<typeof resultSchema>
-
-// --- SAVE RESULT ---
-
-async function saveResult(payload: Payload, result: Result) {
-  // Plus besoin de fetch le workflow, on a déjà le payload !
+async function saveResult(
+  payload: PageGenerationPayload,
+  result: PageGenerationResult
+) {
   const [newPage] = await db
     .insert(pages)
     .values({
@@ -35,12 +26,14 @@ async function saveResult(payload: Payload, result: Result) {
   return { pageId: newPage.id }
 }
 
-// --- HANDLER ---
+// =============================================================================
+// HANDLER CONFIG
+// API-specific config (queue name, saveResult function)
+// Schemas are in @genai/shared and merged in handlers/index.ts
+// =============================================================================
 
 export const pageGenerationHandler = {
   id: "page-generation" as const,
   queue: "page-generation" as const,
-  payloadSchema,
-  resultSchema,
   saveResult,
 }
