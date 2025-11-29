@@ -1,11 +1,21 @@
 import {
   pgTable,
+  pgEnum,
   text,
   timestamp,
   boolean,
   uuid,
   jsonb,
 } from "drizzle-orm/pg-core"
+
+// --- ENUMS ---
+
+export const workflowStatusEnum = pgEnum("workflow_status", [
+  "PENDING",
+  "RUNNING",
+  "COMPLETED",
+  "FAILED",
+])
 
 // --- TABLES BETTER-AUTH ---
 
@@ -59,23 +69,46 @@ export const verification = pgTable("verification", {
   updatedAt: timestamp("updatedAt"),
 })
 
-export const generation = pgTable("generation", {
+// --- TABLE WORKFLOW ---
+
+export const workflows = pgTable("workflows", {
   id: uuid("id").defaultRandom().primaryKey(),
-  userId: text("user_id").notNull(),
 
-  // Le type de workflow (ex: "landing-page")
-  type: text("type").notNull(),
-
-  // L'état actuel (ex: "GENERATING_IMAGES", "COMPLETED")
-  status: text("status").default("PENDING").notNull(),
-
-  // Un message pour l'utilisateur (ex: "Analyse de votre site en cours...")
+  // Statut
+  status: workflowStatusEnum("status").default("PENDING").notNull(),
   displayMessage: text("display_message"),
 
-  // Le résultat final (seulement à la fin)
-  result: jsonb("result"),
+  // Webhook n8n
+  webhookPath: text("webhook_path").notNull(),
 
+  // Donnees
+  payload: jsonb("payload"),
+  result: jsonb("result"),
   error: text("error"),
+
+  // Meta
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 })
+
+// --- TABLES METIER ---
+
+export const pages = pgTable("pages", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull(),
+
+  // Donnees metier
+  title: text("title"),
+  content: jsonb("content"),
+
+  // Meta
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+})
+
+// Types exports
+export type WorkflowStatus = (typeof workflowStatusEnum.enumValues)[number]
+export type Workflow = typeof workflows.$inferSelect
+export type NewWorkflow = typeof workflows.$inferInsert
+export type Page = typeof pages.$inferSelect
+export type NewPage = typeof pages.$inferInsert

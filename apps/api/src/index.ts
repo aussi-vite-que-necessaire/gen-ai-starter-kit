@@ -1,25 +1,17 @@
 import { serve } from "@hono/node-server"
 import { env } from "./env"
-import { db } from "./infra/db"
 import { createApp } from "./app"
+import { startWorkers } from "./workflows/worker"
 
-// 1. Initialiser l'Infra Async
-const redisUrl = `redis://${env.REDIS_HOST}:${env.REDIS_PORT}`
-
-// 2. Initialiser l'App Web
+// 1. Creer l'app Hono
 const app = createApp()
 
-console.log("🚀 Workflow Worker started")
+// 2. Demarrer les workers BullMQ
+startWorkers()
 
-// 4. Lancer le Serveur HTTP
+// 3. Lancer le serveur HTTP
 console.log(`🚀 Server running on port ${env.PORT}`)
 serve({
   fetch: app.fetch,
   port: env.PORT,
 })
-
-// // Graceful Shutdown
-// process.on("SIGTERM", async () => {
-//   await worker.close()
-//   process.exit(0)
-// })

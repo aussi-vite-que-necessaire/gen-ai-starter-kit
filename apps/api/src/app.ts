@@ -2,9 +2,9 @@ import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { logger } from "hono/logger"
 import { env } from "./env"
-import { auth } from "./infra/auth"
-import aiRouter from "./interface/http/routes/ai"
-import internalRouter from "./interface/http/routes/internal"
+import { auth } from "./auth"
+import pagesRouter from "./routes/pages"
+import workflowsRouter from "./routes/workflows"
 
 export const createApp = () => {
   const app = new Hono()
@@ -26,11 +26,11 @@ export const createApp = () => {
   // Routes Auth (Better-Auth)
   app.on(["POST", "GET"], "/api/auth/**", (c) => auth.handler(c.req.raw))
 
-  // Routes Métier
-  app.route("/api/ai", aiRouter)
+  // Routes Metier
+  app.route("/api/pages", pagesRouter)
 
-  // Routes Internal (n8n)
-  app.route("/api/internal", internalRouter)
+  // Routes Workflows (status + complete)
+  app.route("/api/workflows", workflowsRouter)
 
   return app
 }

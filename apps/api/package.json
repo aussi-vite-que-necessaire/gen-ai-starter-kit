@@ -7,6 +7,7 @@
     "start": "tsx src/index.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/migrate.ts",
+    "db:studio": "drizzle-kit studio",
     "test": "vitest",
     "test:cov": "vitest run --coverage",
     "test:ui": "vitest --ui"
@@ -19,7 +20,6 @@
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.38.3",
     "hono": "^4.6.14",
-    "openai": "^6.9.1",
     "pg": "^8.13.1",
     "zod": "^3.24.1",
     "zod-to-json-schema": "^3.25.0"

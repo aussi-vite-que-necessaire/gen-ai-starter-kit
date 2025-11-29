@@ -1,3 +1,4 @@
+CREATE TYPE "public"."workflow_status" AS ENUM('PENDING', 'RUNNING', 'COMPLETED', 'FAILED');--> statement-breakpoint
 CREATE TABLE "account" (
 	"id" text PRIMARY KEY NOT NULL,
 	"accountId" text NOT NULL,
@@ -14,14 +15,11 @@ CREATE TABLE "account" (
 	"updatedAt" timestamp NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "generation" (
+CREATE TABLE "pages" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" text NOT NULL,
-	"type" text NOT NULL,
-	"status" text DEFAULT 'PENDING' NOT NULL,
-	"display_message" text,
-	"result" jsonb,
-	"error" text,
+	"title" text,
+	"content" jsonb,
 	"created_at" timestamp DEFAULT now(),
 	"updated_at" timestamp DEFAULT now()
 );
@@ -56,6 +54,18 @@ CREATE TABLE "verification" (
 	"expiresAt" timestamp NOT NULL,
 	"createdAt" timestamp,
 	"updatedAt" timestamp
+);
+--> statement-breakpoint
+CREATE TABLE "workflows" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"status" "workflow_status" DEFAULT 'PENDING' NOT NULL,
+	"display_message" text,
+	"webhook_path" text NOT NULL,
+	"payload" jsonb,
+	"result" jsonb,
+	"error" text,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
 ALTER TABLE "account" ADD CONSTRAINT "account_userId_user_id_fk" FOREIGN KEY ("userId") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
