@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2025-11-29T19:06:05.293Z",
+  "updatedAt": "2025-11-29T20:09:26.625Z",
   "createdAt": "2025-11-29T17:57:46.988Z",
   "id": "O59HjSzD4t2zNIRv",
   "name": "Generate Page",
@@ -50,9 +50,9 @@
       "parameters": {
         "modelId": {
           "__rl": true,
-          "value": "gpt-5-nano",
+          "value": "chatgpt-4o-latest",
           "mode": "list",
-          "cachedResultName": "GPT-5-NANO"
+          "cachedResultName": "CHATGPT-4O-LATEST"
         },
         "responses": {
           "values": [
@@ -65,13 +65,7 @@
           ]
         },
         "builtInTools": {},
-        "options": {
-          "reasoning": {
-            "reasoningOptions": {
-              "effort": "low"
-            }
-          }
-        }
+        "options": {}
       },
       "type": "@n8n/n8n-nodes-langchain.openAi",
       "typeVersion": 2,
@@ -137,32 +131,10 @@
           "prompt": "Une belle page"
         }
       }
-    ],
-    "Message a model": [
-      {
-        "json": {
-          "output": [
-            {
-              "id": "msg_0f82be1ca1c0a5eb00692b43c3a7908195a7ac21b7c48047ae",
-              "type": "message",
-              "status": "completed",
-              "content": [
-                {
-                  "type": "output_text",
-                  "annotations": [],
-                  "logprobs": [],
-                  "text": "Super idée. Pour écrire exactement un brief marketing de 300 mots sur le thème envoyé, j’ai besoin du thème précis. Peux-tu coller le thème (ou me donner les éléments clés) ? Idéalement:\n- le public cible (persona)\n- l’objectif de la campagne (notoriété, trafic, conversion, fidélisation)\n- la promesse ou le message central\n- le ton souhaité (sérieux, chaleureux, audacieux, premium, accessible)\n- les canaux envisagés (réseaux sociaux, site web, newsletter, presse)\n- les KPI attendus\n\nSi tu préfères, je peux aussi te proposer une version prête à l’emploi sur un thème générique et l’ajuster ensuite dès que tu fournis le thème exact. Dis-moi ce qui te convient et je te livre un brief marketing de 300 mots, clair et prêt à être utilisé."
-                }
-              ],
-              "role": "assistant"
-            }
-          ]
-        }
-      }
     ]
   },
-  "versionId": "7707fad5-e90b-48d6-b7d6-e39aa31553ff",
-  "versionCounter": 44,
+  "versionId": "701f3fe1-b073-467c-9e50-3d98f62d2244",
+  "versionCounter": 46,
   "triggerCount": 1,
   "tags": [],
   "shared": [
