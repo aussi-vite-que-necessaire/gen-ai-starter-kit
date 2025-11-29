@@ -102,7 +102,7 @@ services:
   # --- N8N ---
   n8n:
     image: n8nio/n8n:latest
-    container_name: gen-ai-starter-kit-n8n
+    # PAS de container_name ici ! Sinon les previews entrent en conflit avec la prod
     restart: always
     ports:
       - "5678:5678"
