@@ -2,21 +2,21 @@
 /**
  * AUTO-GENERATED - DO NOT EDIT
  *
- * Uses n8n execution ID automatically - no workflowId field needed!
+ * Uses workflowId from staticData (stored by Trigger)
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.GenAiUpdateStatus = void 0;
 class GenAiUpdateStatus {
     constructor() {
         this.description = {
-            displayName: "GenAI: Update Status",
+            displayName: "@ Update Status",
             name: "genAiUpdateStatus",
             icon: "fa:sync",
             group: ["transform"],
             version: 1,
             description: "Update workflow status and display message",
             defaults: {
-                name: "GenAI: Update Status",
+                name: "@ Update Status",
             },
             inputs: ["main"],
             outputs: ["main"],
@@ -36,8 +36,12 @@ class GenAiUpdateStatus {
         const items = this.getInputData();
         const returnData = [];
         const baseURL = process.env.GENAI_API_URL || "http://host.docker.internal:3000";
-        // Get execution ID from n8n context
-        const executionId = this.getExecutionId();
+        // Get workflowId from static data (stored by Trigger)
+        const staticData = this.getWorkflowStaticData("global");
+        const workflowId = staticData.__genai_workflowId;
+        if (!workflowId) {
+            throw new Error("workflowId not found in staticData. Make sure the GenAI Trigger is used.");
+        }
         for (let i = 0; i < items.length; i++) {
             const displayMessage = this.getNodeParameter("displayMessage", i);
             const requestOptions = {
@@ -47,7 +51,7 @@ class GenAiUpdateStatus {
                     "x-internal-secret": process.env.INTERNAL_API_SECRET || "",
                     "Content-Type": "application/json",
                 },
-                body: { executionId, displayMessage },
+                body: { workflowId, displayMessage },
                 json: true,
             };
             try {

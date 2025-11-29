@@ -1,24 +1,12 @@
 {
-  "updatedAt": "2025-11-29T17:40:47.778Z",
+  "updatedAt": "2025-11-29T17:57:28.422Z",
   "createdAt": "2025-11-29T17:17:49.329Z",
   "id": "YJBSKUGzYtUKymEu",
   "name": "Generate Page",
   "description": null,
   "active": false,
-  "isArchived": false,
+  "isArchived": true,
   "nodes": [
-    {
-      "parameters": {},
-      "type": "CUSTOM.genAiPageGenerationTrigger",
-      "typeVersion": 1,
-      "position": [
-        -544,
-        -112
-      ],
-      "id": "f60ddf53-e744-4551-ac52-7818cdfc792e",
-      "name": "GenAI: PageGeneration Trigger",
-      "webhookId": "8605533a-ea4e-43fa-bb2d-e422721e2598"
-    },
     {
       "parameters": {
         "assignments": {
@@ -36,22 +24,22 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -112,
-        -128
+        -352,
+        -112
       ],
       "id": "424033e0-ee1c-41b3-9c2c-90684369ed6a",
       "name": "Edit Fields"
     },
     {
       "parameters": {
-        "title": "={{ $json.title }}",
+        "title": "={{ $execution }}",
         "content": "test"
       },
       "type": "CUSTOM.genAiPageGenerationComplete",
       "typeVersion": 1,
       "position": [
-        96,
-        -128
+        240,
+        -320
       ],
       "id": "1b57bcd5-4783-40d1-96db-91b9ed50a1d9",
       "name": "GenAI: PageGeneration Complete"
@@ -68,31 +56,9 @@
       ],
       "id": "19e31bad-2c41-45b9-b9c6-37e74588abad",
       "name": "GenAI: Update Status"
-    },
-    {
-      "parameters": {},
-      "type": "n8n-nodes-base.manualTrigger",
-      "typeVersion": 1,
-      "position": [
-        -432,
-        -288
-      ],
-      "id": "398b3c6d-f18a-4f5e-bd17-dbf7643383c5",
-      "name": "When clicking ‘Execute workflow’"
     }
   ],
   "connections": {
-    "GenAI: PageGeneration Trigger": {
-      "main": [
-        [
-          {
-            "node": "Edit Fields",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Edit Fields": {
       "main": [
         [
@@ -108,17 +74,6 @@
           }
         ]
       ]
-    },
-    "When clicking ‘Execute workflow’": {
-      "main": [
-        [
-          {
-            "node": "Edit Fields",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
     }
   },
   "settings": {
@@ -127,9 +82,9 @@
   "staticData": null,
   "meta": null,
   "pinData": {},
-  "versionId": "11f9d992-8199-437f-b50f-9eacb1a6b4e0",
-  "versionCounter": 12,
-  "triggerCount": 0,
+  "versionId": "7d98a3f3-1900-463b-8d67-c4aa98ca5d99",
+  "versionCounter": 30,
+  "triggerCount": 1,
   "tags": [],
   "shared": [
     {

@@ -1,7 +1,7 @@
 /**
  * AUTO-GENERATED - DO NOT EDIT
  * 
- * Uses n8n execution ID automatically - no workflowId field needed!
+ * Uses workflowId from staticData (stored by Trigger)
  */
 
 import {
@@ -14,14 +14,14 @@ import {
 
 export class GenAiUpdateStatus implements INodeType {
   description: INodeTypeDescription = {
-    displayName: "GenAI: Update Status",
+    displayName: "@ Update Status",
     name: "genAiUpdateStatus",
     icon: "fa:sync",
     group: ["transform"],
     version: 1,
     description: "Update workflow status and display message",
     defaults: {
-      name: "GenAI: Update Status",
+      name: "@ Update Status",
     },
     inputs: ["main"],
     outputs: ["main"],
@@ -42,8 +42,13 @@ export class GenAiUpdateStatus implements INodeType {
     const returnData: INodeExecutionData[] = []
     const baseURL = process.env.GENAI_API_URL || "http://host.docker.internal:3000"
     
-    // Get execution ID from n8n context
-    const executionId = this.getExecutionId()
+    // Get workflowId from static data (stored by Trigger)
+    const staticData = this.getWorkflowStaticData("global")
+    const workflowId = staticData.__genai_workflowId as string
+    
+    if (!workflowId) {
+      throw new Error("workflowId not found in staticData. Make sure the GenAI Trigger is used.")
+    }
 
     for (let i = 0; i < items.length; i++) {
       const displayMessage = this.getNodeParameter("displayMessage", i) as string
@@ -55,7 +60,7 @@ export class GenAiUpdateStatus implements INodeType {
           "x-internal-secret": process.env.INTERNAL_API_SECRET || "",
           "Content-Type": "application/json",
         },
-        body: { executionId, displayMessage },
+        body: { workflowId, displayMessage },
         json: true,
       }
 

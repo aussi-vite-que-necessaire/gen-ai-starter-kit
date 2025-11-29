@@ -10,14 +10,14 @@ exports.GenAiPageGenerationComplete = void 0;
 class GenAiPageGenerationComplete {
     constructor() {
         this.description = {
-            displayName: "GenAI: PageGeneration Complete",
+            displayName: "@ PageGeneration Complete",
             name: "genAiPageGenerationComplete",
             icon: "fa:check-circle",
             group: ["transform"],
             version: 1,
             description: "Complete a page-generation workflow",
             defaults: {
-                name: "GenAI: PageGeneration Complete",
+                name: "@ PageGeneration Complete",
             },
             inputs: ["main"],
             outputs: ["main"],
@@ -45,8 +45,12 @@ class GenAiPageGenerationComplete {
         const items = this.getInputData();
         const returnData = [];
         const baseURL = process.env.GENAI_API_URL || "http://host.docker.internal:3000";
-        // Get execution ID from n8n context
-        const executionId = this.getExecutionId();
+        // Get workflowId from static data (stored by Trigger)
+        const staticData = this.getWorkflowStaticData("global");
+        const workflowId = staticData.__genai_workflowId;
+        if (!workflowId) {
+            throw new Error("workflowId not found in staticData. Make sure the GenAI Trigger is used.");
+        }
         for (let i = 0; i < items.length; i++) {
             const result = {};
             result["title"] = this.getNodeParameter("title", i);
@@ -58,7 +62,7 @@ class GenAiPageGenerationComplete {
                     "x-internal-secret": process.env.INTERNAL_API_SECRET || "",
                     "Content-Type": "application/json",
                 },
-                body: { executionId, result },
+                body: { workflowId, result },
                 json: true,
             };
             try {

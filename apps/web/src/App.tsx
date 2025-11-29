@@ -3,7 +3,9 @@ import LoginPage from "./pages/login"
 import RegisterPage from "./pages/register"
 import LandingPage from "./pages/landing"
 import DashboardPage from "./pages/dashboard"
+import PageCreatePage from "./pages/page-create"
 import PageDetailPage from "./pages/page-detail"
+import WorkflowPage from "./pages/workflow"
 import SettingsPage from "./pages/settings"
 import DashboardLayout from "./layouts/DashboardLayout"
 import { authClient } from "./lib/auth-client"
@@ -24,7 +26,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <Toaster position="top-right" />
+      <Toaster position="bottom-center" />
       <ConfirmDialog />
 
       <Routes>
@@ -42,7 +44,9 @@ export default function App() {
         {session ? (
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/dashboard/pages/create" element={<PageCreatePage />} />
             <Route path="/dashboard/pages/:id" element={<PageDetailPage />} />
+            <Route path="/dashboard/workflows/:id" element={<WorkflowPage />} />
             <Route path="/dashboard/settings" element={<SettingsPage />} />
           </Route>
         ) : (

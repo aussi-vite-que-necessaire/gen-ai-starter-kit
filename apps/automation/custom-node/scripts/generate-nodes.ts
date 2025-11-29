@@ -93,7 +93,7 @@ function getDefaultValue(type: string): string {
 
 function generateTriggerNode(workflow: WorkflowDef): string {
   const className = `GenAi${pascalCase(workflow.name)}Trigger`
-  const displayName = `GenAI: ${pascalCase(workflow.name)} Trigger`
+  const displayName = `@ ${pascalCase(workflow.name)} Trigger`
   const nodeName = `genAi${pascalCase(workflow.name)}Trigger`
 
   return `/**
@@ -121,7 +121,7 @@ export class ${className} implements INodeType {
     version: 1,
     description: "Triggered when a ${workflow.name} workflow is started",
     defaults: {
-      name: "${displayName}",
+      name: "@ ${pascalCase(workflow.name)} Trigger",
     },
     inputs: [],
     outputs: ["main"],
@@ -131,6 +131,7 @@ export class ${className} implements INodeType {
         httpMethod: "POST",
         path: "${workflow.name}",
         responseMode: "onReceived",
+        isFullPath: true,
       },
     ],
     properties: [],
@@ -153,32 +154,11 @@ export class ${className} implements INodeType {
       payload: Record<string, unknown>
     }
 
-    // Get n8n execution ID
-    const executionId = this.getMode() === "manual" 
-      ? \`manual-\${Date.now()}\` 
-      : (this as any).getExecutionId?.() || \`exec-\${Date.now()}\`
+    // Store workflowId in static data (accessible by other nodes in this execution)
+    const staticData = (this as any).getWorkflowStaticData?.("global") || {}
+    staticData.__genai_workflowId = body.workflowId
 
-    // Auto-register execution ID with API
-    try {
-      const registerOptions: IHttpRequestOptions = {
-        method: "POST",
-        url: \`\${baseURL}/api/n8n/register\`,
-        headers: {
-          "x-internal-secret": expectedSecret,
-          "Content-Type": "application/json",
-        },
-        body: {
-          workflowId: body.workflowId,
-          executionId: executionId,
-        },
-        json: true,
-      }
-      await this.helpers.request(registerOptions)
-    } catch (error) {
-      console.error("Failed to register execution:", error)
-    }
-
-    // Output payload (no workflowId needed - use $execution.id)
+    // Output payload only (workflowId is in staticData)
     return {
       workflowData: [
         [{ json: body.payload as any }],
@@ -195,7 +175,7 @@ export class ${className} implements INodeType {
 
 function generateCompleteNode(workflow: WorkflowDef): string {
   const className = `GenAi${pascalCase(workflow.name)}Complete`
-  const displayName = `GenAI: ${pascalCase(workflow.name)} Complete`
+  const displayName = `@ ${pascalCase(workflow.name)} Complete`
   const nodeName = `genAi${pascalCase(workflow.name)}Complete`
 
   const fields = workflow.resultFields
@@ -243,7 +223,7 @@ export class ${className} implements INodeType {
     version: 1,
     description: "Complete a ${workflow.name} workflow",
     defaults: {
-      name: "${displayName}",
+      name: "@ ${pascalCase(workflow.name)} Complete",
     },
     inputs: ["main"],
     outputs: ["main"],
@@ -257,8 +237,13 @@ ${fields}
     const returnData: INodeExecutionData[] = []
     const baseURL = process.env.GENAI_API_URL || "http://host.docker.internal:3000"
     
-    // Get execution ID from n8n context
-    const executionId = this.getExecutionId()
+    // Get workflowId from static data (stored by Trigger)
+    const staticData = this.getWorkflowStaticData("global")
+    const workflowId = staticData.__genai_workflowId as string
+    
+    if (!workflowId) {
+      throw new Error("workflowId not found in staticData. Make sure the GenAI Trigger is used.")
+    }
 
     for (let i = 0; i < items.length; i++) {
       const result: Record<string, any> = {}
@@ -271,7 +256,7 @@ ${resultAssignments}
           "x-internal-secret": process.env.INTERNAL_API_SECRET || "",
           "Content-Type": "application/json",
         },
-        body: { executionId, result },
+        body: { workflowId, result },
         json: true,
       }
 
@@ -299,7 +284,7 @@ ${resultAssignments}
 const updateStatusNode = `/**
  * AUTO-GENERATED - DO NOT EDIT
  * 
- * Uses n8n execution ID automatically - no workflowId field needed!
+ * Uses workflowId from staticData (stored by Trigger)
  */
 
 import {
@@ -312,14 +297,14 @@ import {
 
 export class GenAiUpdateStatus implements INodeType {
   description: INodeTypeDescription = {
-    displayName: "GenAI: Update Status",
+    displayName: "@ Update Status",
     name: "genAiUpdateStatus",
     icon: "fa:sync",
     group: ["transform"],
     version: 1,
     description: "Update workflow status and display message",
     defaults: {
-      name: "GenAI: Update Status",
+      name: "@ Update Status",
     },
     inputs: ["main"],
     outputs: ["main"],
@@ -340,8 +325,13 @@ export class GenAiUpdateStatus implements INodeType {
     const returnData: INodeExecutionData[] = []
     const baseURL = process.env.GENAI_API_URL || "http://host.docker.internal:3000"
     
-    // Get execution ID from n8n context
-    const executionId = this.getExecutionId()
+    // Get workflowId from static data (stored by Trigger)
+    const staticData = this.getWorkflowStaticData("global")
+    const workflowId = staticData.__genai_workflowId as string
+    
+    if (!workflowId) {
+      throw new Error("workflowId not found in staticData. Make sure the GenAI Trigger is used.")
+    }
 
     for (let i = 0; i < items.length; i++) {
       const displayMessage = this.getNodeParameter("displayMessage", i) as string
@@ -353,7 +343,7 @@ export class GenAiUpdateStatus implements INodeType {
           "x-internal-secret": process.env.INTERNAL_API_SECRET || "",
           "Content-Type": "application/json",
         },
-        body: { executionId, displayMessage },
+        body: { workflowId, displayMessage },
         json: true,
       }
 

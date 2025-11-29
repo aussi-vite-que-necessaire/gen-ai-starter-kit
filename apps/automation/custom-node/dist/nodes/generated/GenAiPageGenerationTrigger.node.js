@@ -11,14 +11,14 @@ exports.GenAiPageGenerationTrigger = void 0;
 class GenAiPageGenerationTrigger {
     constructor() {
         this.description = {
-            displayName: "GenAI: PageGeneration Trigger",
+            displayName: "@ PageGeneration Trigger",
             name: "genAiPageGenerationTrigger",
             icon: "fa:bolt",
             group: ["trigger"],
             version: 1,
             description: "Triggered when a page-generation workflow is started",
             defaults: {
-                name: "GenAI: PageGeneration Trigger",
+                name: "@ PageGeneration Trigger",
             },
             inputs: [],
             outputs: ["main"],
@@ -28,6 +28,7 @@ class GenAiPageGenerationTrigger {
                     httpMethod: "POST",
                     path: "page-generation",
                     responseMode: "onReceived",
+                    isFullPath: true,
                 },
             ],
             properties: [],
@@ -44,31 +45,10 @@ class GenAiPageGenerationTrigger {
             return { webhookResponse: { error: "Unauthorized" } };
         }
         const body = this.getBodyData();
-        // Get n8n execution ID
-        const executionId = this.getMode() === "manual"
-            ? `manual-${Date.now()}`
-            : ((_b = (_a = this).getExecutionId) === null || _b === void 0 ? void 0 : _b.call(_a)) || `exec-${Date.now()}`;
-        // Auto-register execution ID with API
-        try {
-            const registerOptions = {
-                method: "POST",
-                url: `${baseURL}/api/n8n/register`,
-                headers: {
-                    "x-internal-secret": expectedSecret,
-                    "Content-Type": "application/json",
-                },
-                body: {
-                    workflowId: body.workflowId,
-                    executionId: executionId,
-                },
-                json: true,
-            };
-            await this.helpers.request(registerOptions);
-        }
-        catch (error) {
-            console.error("Failed to register execution:", error);
-        }
-        // Output payload (no workflowId needed - use $execution.id)
+        // Store workflowId in static data (accessible by other nodes in this execution)
+        const staticData = ((_b = (_a = this).getWorkflowStaticData) === null || _b === void 0 ? void 0 : _b.call(_a, "global")) || {};
+        staticData.__genai_workflowId = body.workflowId;
+        // Output payload only (workflowId is in staticData)
         return {
             workflowData: [
                 [{ json: body.payload }],

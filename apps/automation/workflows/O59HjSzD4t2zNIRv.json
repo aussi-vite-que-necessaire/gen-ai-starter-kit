@@ -1,0 +1,158 @@
+{
+  "updatedAt": "2025-11-29T18:34:32.720Z",
+  "createdAt": "2025-11-29T17:57:46.988Z",
+  "id": "O59HjSzD4t2zNIRv",
+  "name": "My workflow 4",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "title": "={{ $json.output[0].content[0].text }}",
+        "content": "={{ $json.output[0].content[0].text }}"
+      },
+      "type": "CUSTOM.genAiPageGenerationComplete",
+      "typeVersion": 1,
+      "position": [
+        688,
+        160
+      ],
+      "id": "ecdcb566-5b7f-4b40-b111-4b963cc34154",
+      "name": "GenAI: PageGeneration Complete"
+    },
+    {
+      "parameters": {
+        "displayMessage": "Etape 1"
+      },
+      "type": "CUSTOM.genAiUpdateStatus",
+      "typeVersion": 1,
+      "position": [
+        336,
+        -128
+      ],
+      "id": "42dcc9e2-15ee-4460-878c-d5222d669f5e",
+      "name": "@ Update Status"
+    },
+    {
+      "parameters": {},
+      "type": "CUSTOM.genAiPageGenerationTrigger",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        -32
+      ],
+      "id": "49bd074e-fc7c-4883-a59f-d3313c68990d",
+      "name": "@ PageGeneration Trigger",
+      "webhookId": "ecd0f87a-d863-47a9-98c0-362a03229fc6"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-nano",
+          "mode": "list",
+          "cachedResultName": "GPT-5-NANO"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "={{ $json.prompt }}"
+            },
+            {
+              "content": "Ecrit le brief marketing sur le theme envoyé. de 300 mots. "
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        160,
+        144
+      ],
+      "id": "23a6be34-2786-40b6-b341-445fcd399908",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "GOEK4j4pctiNhdgx",
+          "name": "OpenAi account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "@ PageGeneration Trigger": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@ Update Status": {
+      "main": [
+        []
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "GenAI: PageGeneration Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": {
+    "global": {
+      "__genai_workflowId": "7fe9c9a7-10e5-4ad7-afda-d0a73d454b64"
+    }
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {
+    "@ PageGeneration Trigger": [
+      {
+        "json": {
+          "userId": "k4xd0LFFBiJUCULyJLAGw7vtwGuvWmhU",
+          "prompt": "fezfzef"
+        }
+      }
+    ]
+  },
+  "versionId": "5273960b-cba5-4564-abfa-2c8dbee8a2fb",
+  "versionCounter": 39,
+  "triggerCount": 1,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2025-11-29T17:57:46.988Z",
+      "createdAt": "2025-11-29T17:57:46.988Z",
+      "role": "workflow:owner",
+      "workflowId": "O59HjSzD4t2zNIRv",
+      "projectId": "UB6VcGqVOrq3em4j",
+      "project": {
+        "updatedAt": "2025-11-28T20:51:41.889Z",
+        "createdAt": "2025-11-28T20:51:10.705Z",
+        "id": "UB6VcGqVOrq3em4j",
+        "name": "Manu Bernard <sys@avqn.ch>",
+        "type": "personal",
+        "icon": null,
+        "description": null
+      }
+    }
+  ]
+}

@@ -16,14 +16,14 @@ import {
 
 export class GenAiPageGenerationTrigger implements INodeType {
   description: INodeTypeDescription = {
-    displayName: "GenAI: PageGeneration Trigger",
+    displayName: "@ PageGeneration Trigger",
     name: "genAiPageGenerationTrigger",
     icon: "fa:bolt",
     group: ["trigger"],
     version: 1,
     description: "Triggered when a page-generation workflow is started",
     defaults: {
-      name: "GenAI: PageGeneration Trigger",
+      name: "@ PageGeneration Trigger",
     },
     inputs: [],
     outputs: ["main"],
@@ -33,6 +33,7 @@ export class GenAiPageGenerationTrigger implements INodeType {
         httpMethod: "POST",
         path: "page-generation",
         responseMode: "onReceived",
+        isFullPath: true,
       },
     ],
     properties: [],
@@ -55,32 +56,11 @@ export class GenAiPageGenerationTrigger implements INodeType {
       payload: Record<string, unknown>
     }
 
-    // Get n8n execution ID
-    const executionId = this.getMode() === "manual" 
-      ? `manual-${Date.now()}` 
-      : (this as any).getExecutionId?.() || `exec-${Date.now()}`
+    // Store workflowId in static data (accessible by other nodes in this execution)
+    const staticData = (this as any).getWorkflowStaticData?.("global") || {}
+    staticData.__genai_workflowId = body.workflowId
 
-    // Auto-register execution ID with API
-    try {
-      const registerOptions: IHttpRequestOptions = {
-        method: "POST",
-        url: `${baseURL}/api/n8n/register`,
-        headers: {
-          "x-internal-secret": expectedSecret,
-          "Content-Type": "application/json",
-        },
-        body: {
-          workflowId: body.workflowId,
-          executionId: executionId,
-        },
-        json: true,
-      }
-      await this.helpers.request(registerOptions)
-    } catch (error) {
-      console.error("Failed to register execution:", error)
-    }
-
-    // Output payload (no workflowId needed - use $execution.id)
+    // Output payload only (workflowId is in staticData)
     return {
       workflowData: [
         [{ json: body.payload as any }],
