@@ -208,6 +208,10 @@ jobs:
               fi
             done
 
+            # Activer tous les workflows
+            echo "🔌 Activation des workflows..."
+            docker compose -p $FOLDER_NAME exec -u node -T n8n n8n update:workflow --all --active=true || echo "⚠️ Workflow activation failed"
+
             rm -rf repo-temp
 
       - name: Comment PR URL
