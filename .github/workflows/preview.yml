@@ -7,6 +7,7 @@ on:
 jobs:
   deploy-preview:
     runs-on: ubuntu-latest
+    timeout-minutes: 20 # Timeout plus long pour les téléchargements lents
     permissions:
       contents: read
       packages: write
@@ -36,6 +37,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Pré-pull des images de base avec retry (évite les timeouts réseau)
+      - name: Pre-pull base images
+        run: |
+          for i in {1..3}; do
+            docker pull node:22-alpine && break || sleep 10
+          done
+
       # 3. BUILD API
       - name: Build and Push API
         uses: docker/build-push-action@v4
@@ -44,6 +52,8 @@ jobs:
           file: ./apps/api/Dockerfile
           push: true
           tags: ghcr.io/${{ env.REPO_LOWER }}/api:pr-${{ github.event.number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       # 4. BUILD WEB
       - name: Create Web Env for Preview
@@ -57,6 +67,8 @@ jobs:
           file: ./apps/web/Dockerfile
           push: true
           tags: ghcr.io/${{ env.REPO_LOWER }}/web:pr-${{ github.event.number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       # 5. DEPLOY TO VPS
       - name: Deploy Preview to VPS
@@ -181,6 +193,9 @@ jobs:
 
             echo "📦 Migrations API..."
             docker compose -p $FOLDER_NAME run --rm api npm run db:migrate
+
+            echo "🌱 Seed utilisateur de test..."
+            docker compose -p $FOLDER_NAME run --rm api npm run db:seed
 
             echo "🚀 Démarrage Final (API, Web, n8n)..."
             docker compose -p $FOLDER_NAME up -d

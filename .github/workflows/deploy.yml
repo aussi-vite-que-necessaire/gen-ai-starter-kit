@@ -7,6 +7,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 20 # Timeout plus long pour les téléchargements lents
     permissions:
       contents: read
       packages: write
@@ -27,6 +28,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Pré-pull des images de base avec retry (évite les timeouts réseau)
+      - name: Pre-pull base images
+        run: |
+          for i in {1..3}; do
+            docker pull node:22-alpine && break || sleep 10
+          done
+
       # 2. BUILD API
       - name: Build and Push API
         uses: docker/build-push-action@v4
@@ -35,6 +43,8 @@ jobs:
           file: ./apps/api/Dockerfile
           push: true
           tags: ghcr.io/${{ env.REPO_LOWER }}/api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       # 3. BUILD WEB
       - name: Create Web Env for Production
@@ -48,6 +58,8 @@ jobs:
           file: ./apps/web/Dockerfile
           push: true
           tags: ghcr.io/${{ env.REPO_LOWER }}/web:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       # 4. DEPLOY TO VPS
       - name: Deploy to VPS

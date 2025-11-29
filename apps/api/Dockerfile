@@ -1,19 +1,17 @@
 FROM node:22-alpine
 WORKDIR /app
 
-# Copie des fichiers de config monorepo
+# 1. Copie SEULEMENT les package.json (pour cache layer)
 COPY package*.json ./
 COPY packages/shared/package.json ./packages/shared/
-
-# Copie du code shared
-COPY packages/shared ./packages/shared
-
-# Copie du code api
 COPY apps/api/package*.json ./apps/api/
-COPY apps/api ./apps/api
 
-# Install depuis la racine (gère les workspaces, skip husky)
+# 2. Install (cache si package.json ne change pas)
 RUN npm install --workspace=@genai/shared --workspace=api --ignore-scripts
+
+# 3. Copie le code (invalide seulement si code change)
+COPY packages/shared ./packages/shared
+COPY apps/api ./apps/api
 
 WORKDIR /app/apps/api
 EXPOSE 3000
