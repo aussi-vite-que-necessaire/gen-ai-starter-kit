@@ -1,101 +1,106 @@
-# Gen AI App - Starter Kit
+# Gen AI Starter Kit
 
-Stack de production complète avec CI/CD, environnements de preview (PR) et monitoring.
+Starter kit pour apps Gen AI avec **n8n** pour la logique métier et une **API lean** pour l'auth/DB.
 
-## 🔗 Accès Rapides
+## 🏗 Architecture
 
-| Service              | URL                                       |
-| :------------------- | :---------------------------------------- |
-| **Production**       | `https://proof-of-project.avqn.ch`        |
-| **Emails (Mailpit)** | `https://emails.proof-of-project.avqn.ch` |
-| **DB (Adminer)**     | `https://studio.proof-of-project.avqn.ch` |
-| **Status**           | `https://status.proof-of-project.avqn.ch` |
-
-## 🛠 Stack Technique
-
-- **App :** Node.js 22, Drizzle ORM, Postgres 15, Redis 7.
-- **Ops :** Docker Compose, Traefik (Reverse Proxy + SSL auto), GitHub Actions.
-- **Tools :** Mailpit (SMTP Mock), Adminer (GUI Base de données), Uptime Kuma (Monitoring).
-
-## 💻 Développement Local
-
-**1. Démarrer l'infrastructure (DB + Redis)**
-
-```bash
-npm run dev:db:up
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Frontend  │────▶│     API     │────▶│     n8n     │
+│   (React)   │     │   (Hono)    │     │ (Workflows) │
+└─────────────┘     └─────────────┘     └─────────────┘
+                           │                    │
+                           ▼                    │
+                    ┌─────────────┐             │
+                    │  PostgreSQL │◀────────────┘
+                    │    Redis    │   (callbacks)
+                    └─────────────┘
 ```
 
-_Port Postgres local : `5433` (pour éviter les conflits)_
+- **API** : Auth (Better-Auth), DB (Drizzle), lance les workflows via BullMQ
+- **n8n** : Toute la logique métier, appelle l'API pour sauvegarder les résultats
+- **Custom Nodes** : Générés automatiquement depuis les schemas partagés
 
-**2. Setup de l'environnement**
+## 🚀 Quick Start
 
 ```bash
-export DATABASE_URL="postgresql://app_user:dev_password@localhost:5433/webapp"
+# 1. Lancer l'infra (DB, Redis, n8n)
+npm run docker:up
+
+# 2. Installer les dépendances
 npm install
-npm run db:migrate
+
+# 3. Migrations DB
+npm run db:migrate -w api
+
+# 4. Lancer API + Frontend
+npm run dev
 ```
 
-**3. Lancer l'app**
+**URLs locales :**
+
+- Frontend : http://localhost:5173
+- API : http://localhost:3000
+- n8n : http://localhost:5678
+
+## 📁 Structure
+
+```
+apps/
+├── api/          # API Hono (auth, DB, workflows)
+├── web/          # Frontend React + Vite
+└── automation/
+    ├── custom-node/    # Nodes n8n auto-générés
+    └── workflows/      # Export JSON des workflows
+
+packages/
+└── shared/       # Types partagés (Zod schemas)
+```
+
+## 🔄 Workflows
+
+Les workflows sont définis dans `packages/shared/src/workflows/`:
+
+```typescript
+// Définir un nouveau workflow
+export const pageGenerationPayload = z.object({ prompt: z.string() })
+export const pageGenerationResult = z.object({
+  title: z.string(),
+  content: z.string(),
+})
+```
+
+Les custom nodes n8n sont **auto-générés** :
 
 ```bash
-npm start
+npm run generate:nodes -w custom-node
 ```
 
-## 🔄 CI/CD & Déploiement
+## 🔧 Développement n8n
 
-Le workflow est entièrement automatisé via GitHub Actions.
+Les workflows sont **auto-exportés** avant chaque commit (via Husky) :
 
-> **Note :** Les environnements de preview sont créés automatiquement pour chaque PR.
+- Modifie ton workflow dans n8n local
+- `git commit` → export automatique
+- Les JSONs sont versionnés dans `apps/automation/workflows/`
 
-- **Branche `main`** : Déploiement automatique en production.
-- **Pull Requests** : Création d'un environnement éphémère (`https://pr-X.proof-of-project...`) avec sa propre DB isolée. Suppression automatique à la fermeture de la PR.
+## 🚢 Déploiement
 
-### Secrets Requis (GitHub)
+- **Push sur `main`** → Deploy en production
+- **Pull Request** → Environnement preview isolé (auto-détruit à la fermeture)
 
-- `VPS_HOST` / `VPS_USER` / `VPS_SSH_KEY` : Accès SSH au serveur.
-- `DB_PASSWORD` : Mot de passe de production.
+GitHub Actions gère :
 
-## 🗄 Base de données
+- Build des images Docker
+- Import des workflows n8n
+- Activation + restart pour les webhooks
 
-Gestion du schéma via Drizzle Kit.
+## 📝 Commandes utiles
 
 ```bash
-# Générer la migration après modif du schema.js
-npm run db:generate
-
-# Appliquer les migrations
-npm run db:migrate
+npm run dev              # API + Frontend
+npm run docker:up        # Infra locale
+npm run db:migrate -w api    # Migrations
+npm run n8n:export       # Export manuel workflows
+npm run generate:nodes -w custom-node  # Rebuild nodes
 ```
-
-## ⚙️ Commandes Ops (Makefile)
-
-Commandes raccourcies pour gérer le serveur via SSH (nécessite d'avoir configuré `~/.ssh/config`).
-
-```bash
-make ssh        # Connexion au VPS
-make logs       # Logs en temps réel de tous les services
-make backup     # Forcer un backup DB immédiat
-make console    # Shell dans le conteneur App
-```
-
-**Backups :** Automatiques (quotidiens), stockés dans `./backups/` sur le VPS. Rétention : 7 jours, 4 semaines, 6 mois.
-
-## Architecture
-
-apps/api/src/
-├── core/ # 🧠 LE CERVEAU (Domain & Use Cases)
-│ ├── entities/ # Types Zod & TypeScript (ex: User, AISummary)
-│ ├── ports/ # Interfaces abstraites (ex: AIProvider, DatabaseRepository)
-│ ├── errors/ # Erreurs métier (ex: QuotaExceededError)
-│ └── use-cases/ # La logique pure (ex: generate-summary.ts)
-│ └── **tests**/ # Tests Unitaires (Rapides)
-│
-├── infra/ # 🔌 LES CÂBLES (Implémentations)
-│ ├── adapters/ # Implémentation des Ports (ex: OpenAIAdapter, PostgresAdapter)
-│ ├── db/ # Configuration Drizzle, Schema, Migrations
-│ └── env.ts # Validation Zod des variables d'env
-│
-└── interface/ # 🗣️ LA BOUCHE (Points d'entrée)
-├── http/ # Serveur Hono, Routes, Middlewares
-│ └── **tests**/ # Tests E2E (Appels HTTP réels sur DB de test)
-└── workers/ # Workers BullMQ (Async jobs)
