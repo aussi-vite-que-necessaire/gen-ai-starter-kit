@@ -5,7 +5,10 @@ import { Link } from "react-router-dom"
 import { Loader2, Plus, X, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { useConfirm } from "../lib/use-confirm"
-import type { PageGenerationPayload } from "@genai/shared/workflows"
+import type {
+  WorkflowType,
+  PageGenerationFinalResult,
+} from "@genai/shared/workflows"
 
 type Page = {
   id: string
@@ -17,7 +20,7 @@ type Workflow = {
   id: string
   status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED"
   displayMessage: string | null
-  result: { pageId?: string } | null
+  result: PageGenerationFinalResult | null
 }
 
 export default function DashboardPage() {
@@ -39,10 +42,10 @@ export default function DashboardPage() {
 
   // Mutation pour lancer un workflow
   const startMutation = useMutation({
-    mutationFn: async (payload: Omit<PageGenerationPayload, "userId">) => {
+    mutationFn: async (prompt: string) => {
       const res = await api.post("/workflows/start", {
-        type: "page-generation",
-        payload,
+        type: "page-generation" satisfies WorkflowType,
+        payload: { prompt },
       })
       return res.data as { workflowId: string }
     },
@@ -196,7 +199,7 @@ export default function DashboardPage() {
                 Annuler
               </button>
               <button
-                onClick={() => startMutation.mutate({ prompt })}
+                onClick={() => startMutation.mutate(prompt)}
                 disabled={!prompt.trim() || startMutation.isPending}
                 className="px-3 py-1.5 text-sm border border-black bg-black text-white hover:bg-gray-800 disabled:opacity-50"
               >

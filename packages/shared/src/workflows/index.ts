@@ -1,7 +1,7 @@
 import { z } from "zod"
 
 // =============================================================================
-// SCHEMAS
+// SCHEMAS - Définir les nouveaux workflows ici
 // =============================================================================
 
 // --- PAGE GENERATION ---
@@ -19,42 +19,39 @@ export const pageGenerationResult = z.object({
 export type PageGenerationPayload = z.infer<typeof pageGenerationPayload>
 export type PageGenerationResult = z.infer<typeof pageGenerationResult>
 
-// =============================================================================
-// REGISTRY
-// =============================================================================
+// Result final avec pageId (après saveResult côté API)
+export type PageGenerationFinalResult = PageGenerationResult & {
+  pageId: string
+}
 
-export const WORKFLOW_TYPES = ["page-generation"] as const
-
-export type WorkflowType = (typeof WORKFLOW_TYPES)[number]
+// =============================================================================
+// REGISTRY - Source de vérité
+// =============================================================================
 
 export const workflowSchemas = {
   "page-generation": {
     payload: pageGenerationPayload,
     result: pageGenerationResult,
   },
-} as const satisfies Record<
-  WorkflowType,
-  { payload: z.ZodType; result: z.ZodType }
+} as const
+
+// Types dérivés
+export type WorkflowType = keyof typeof workflowSchemas
+
+export type WorkflowPayload<T extends WorkflowType> = z.infer<
+  (typeof workflowSchemas)[T]["payload"]
+>
+
+export type WorkflowResult<T extends WorkflowType> = z.infer<
+  (typeof workflowSchemas)[T]["result"]
 >
 
 // =============================================================================
 // HELPERS
 // =============================================================================
 
+export const WORKFLOW_TYPES = Object.keys(workflowSchemas) as WorkflowType[]
+
 export function isValidWorkflowType(type: string): type is WorkflowType {
-  return WORKFLOW_TYPES.includes(type as WorkflowType)
-}
-
-export function validatePayload<T extends WorkflowType>(
-  type: T,
-  payload: unknown
-) {
-  return workflowSchemas[type].payload.parse(payload)
-}
-
-export function validateResult<T extends WorkflowType>(
-  type: T,
-  result: unknown
-) {
-  return workflowSchemas[type].result.parse(result)
+  return type in workflowSchemas
 }
