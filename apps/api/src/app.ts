@@ -5,6 +5,7 @@ import { env } from "./env"
 import { auth } from "./auth"
 import pagesRouter from "./routes/pages"
 import workflowsRouter from "./routes/workflows"
+import n8nRouter from "./routes/n8n"
 
 export const createApp = () => {
   const app = new Hono()
@@ -26,11 +27,12 @@ export const createApp = () => {
   // Routes Auth (Better-Auth)
   app.on(["POST", "GET"], "/api/auth/**", (c) => auth.handler(c.req.raw))
 
-  // Routes Metier
+  // Routes API (frontend)
   app.route("/api/pages", pagesRouter)
-
-  // Routes Workflows (status + complete)
   app.route("/api/workflows", workflowsRouter)
+
+  // Routes n8n (callbacks)
+  app.route("/api/n8n", n8nRouter)
 
   return app
 }

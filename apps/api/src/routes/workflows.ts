@@ -2,25 +2,20 @@ import { Hono } from "hono"
 import { z } from "zod"
 import { zValidator } from "@hono/zod-validator"
 import { eq } from "drizzle-orm"
+import { auth, requireAuth } from "../auth"
 import { db } from "../db"
-import { workflows, workflowStatusEnum } from "../db/schema"
-import { env } from "../env"
-import {
-  WorkflowDefinitions,
-  markWorkflowCompleted,
-  pageGenerationResult,
-} from "../workflows/definitions"
+import { workflows } from "../db/schema"
+import { startWorkflow, handlers, isValidWorkflowType } from "../workflows"
 
-const app = new Hono()
-
-// Middleware securite pour les routes internes (appelees par n8n)
-const requireInternalSecret = async (c: any, next: any) => {
-  const secret = c.req.header("x-internal-secret")
-  if (secret !== env.INTERNAL_API_SECRET) {
-    return c.json({ error: "Unauthorized" }, 403)
+// Type pour le contexte Hono avec user
+type Env = {
+  Variables: {
+    user: typeof auth.$Infer.Session.user
+    session: typeof auth.$Infer.Session.session
   }
-  await next()
 }
+
+const app = new Hono<Env>()
 
 // --- ROUTES PUBLIQUES ---
 
@@ -40,99 +35,35 @@ app.get("/:id", async (c) => {
   return c.json({ workflow })
 })
 
-// --- ROUTES INTERNES (n8n) ---
+// --- ROUTES AUTHENTIFIÉES ---
 
-// Schema pour update-status
-const updateStatusSchema = z.object({
-  workflowId: z.string().uuid(),
-  status: z.enum(["RUNNING"]), // Seulement RUNNING, pas COMPLETED/FAILED
-  displayMessage: z.string().optional(),
-})
+app.use("/start", requireAuth)
 
-// POST /api/workflows/update-status - Met a jour le status (appelé par n8n)
+// POST /api/workflows/start - Lance un workflow (générique)
 app.post(
-  "/update-status",
-  requireInternalSecret,
-  zValidator("json", updateStatusSchema),
+  "/start",
+  zValidator(
+    "json",
+    z.object({
+      type: z.string(),
+      payload: z.record(z.unknown()),
+    })
+  ),
   async (c) => {
-    const { workflowId, status, displayMessage } = c.req.valid("json")
+    const userId = c.var.user.id
+    const { type, payload } = c.req.valid("json")
 
-    console.log(`[Workflow] Update status ${workflowId}: ${status}`)
+    if (!isValidWorkflowType(type)) {
+      return c.json({ error: `Unknown workflow type: ${type}` }, 400)
+    }
 
-    await db
-      .update(workflows)
-      .set({
-        status,
-        displayMessage,
-        updatedAt: new Date(),
-      })
-      .where(eq(workflows.id, workflowId))
-
-    return c.json({ success: true, status })
-  }
-)
-
-// Schema pour complete
-const completeSchema = z.object({
-  workflowId: z.string().uuid(),
-  result: z.record(z.unknown()),
-})
-
-// POST /api/workflows/page-generation/complete - Complete un workflow page
-app.post(
-  "/page-generation/complete",
-  requireInternalSecret,
-  zValidator("json", completeSchema),
-  async (c) => {
-    const { workflowId, result } = c.req.valid("json")
-
-    console.log(`[Workflow] Complete page-generation ${workflowId}`)
-
-    // 1. Valide le result avec le schema typé
-    const validResult = pageGenerationResult.parse(result)
-
-    // 2. Sauvegarde dans les tables métier (retourne { pageId })
-    const saveResponse = await WorkflowDefinitions[
-      "page-generation"
-    ].saveResult(workflowId, validResult)
-
-    // 3. Mark workflow completed avec result complet (n8n + pageId)
-    await markWorkflowCompleted(workflowId, {
-      ...validResult,
-      ...saveResponse, // Ajoute pageId au result
+    // Injecte le userId dans le payload (sécurité)
+    const { workflowId, jobId } = await startWorkflow(type, {
+      ...payload,
+      userId,
     })
 
-    return c.json({ success: true, ...saveResponse })
-  }
-)
-
-// Schema pour fail
-const failSchema = z.object({
-  workflowId: z.string().uuid(),
-  error: z.string(),
-})
-
-// POST /api/workflows/fail - Marque un workflow comme failed
-app.post(
-  "/fail",
-  requireInternalSecret,
-  zValidator("json", failSchema),
-  async (c) => {
-    const { workflowId, error } = c.req.valid("json")
-
-    console.log(`[Workflow] Failed ${workflowId}: ${error}`)
-
-    await db
-      .update(workflows)
-      .set({
-        status: "FAILED",
-        error,
-        displayMessage: "Erreur",
-        updatedAt: new Date(),
-      })
-      .where(eq(workflows.id, workflowId))
-
-    return c.json({ success: true, status: "FAILED" })
+    return c.json({ success: true, workflowId, jobId }, 201)
   }
 )
 

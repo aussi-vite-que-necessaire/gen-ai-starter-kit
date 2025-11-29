@@ -1,12 +1,8 @@
 import { Hono } from "hono"
-import { z } from "zod"
-import { zValidator } from "@hono/zod-validator"
 import { eq, desc, and } from "drizzle-orm"
 import { auth, requireAuth } from "../auth"
 import { db } from "../db"
-import { pages, workflows } from "../db/schema"
-import { addWorkflowJob } from "../workflows/queues"
-import { WorkflowDefinitions } from "../workflows/definitions"
+import { pages } from "../db/schema"
 
 // Type pour le contexte Hono avec user
 type Env = {
@@ -21,13 +17,7 @@ const app = new Hono<Env>()
 // Toutes les routes necessitent l'auth
 app.use("*", requireAuth)
 
-// --- Schemas de validation ---
-
-const generatePageSchema = z.object({
-  prompt: z.string().optional(),
-})
-
-// --- Routes ---
+// --- Routes CRUD ---
 
 // GET /api/pages - Liste les pages de l'utilisateur
 app.get("/", async (c) => {
@@ -57,46 +47,6 @@ app.get("/:id", async (c) => {
   }
 
   return c.json({ page })
-})
-
-// POST /api/pages/generate - Lance un workflow de génération
-app.post("/generate", zValidator("json", generatePageSchema), async (c) => {
-  const userId = c.var.user.id
-  const { prompt } = c.req.valid("json")
-
-  const workflowDef = WorkflowDefinitions["page-generation"]
-
-  // Payload pour n8n (pas de pageId, la page sera créée à la fin)
-  const payload = { userId, prompt }
-
-  // Crée le workflow
-  const [workflow] = await db
-    .insert(workflows)
-    .values({
-      webhookPath: workflowDef.webhookPath,
-      payload,
-      status: "PENDING",
-      displayMessage: "En attente...",
-    })
-    .returning()
-
-  // Ajoute un job BullMQ
-  const jobId = await addWorkflowJob("page-generation", {
-    workflowId: workflow.id,
-    webhookPath: workflowDef.webhookPath,
-    payload,
-  })
-
-  console.log(`[Pages] Started workflow ${workflow.id}, job ${jobId}`)
-
-  return c.json(
-    {
-      success: true,
-      workflowId: workflow.id,
-      jobId,
-    },
-    201
-  )
 })
 
 // DELETE /api/pages/:id - Supprime une page
