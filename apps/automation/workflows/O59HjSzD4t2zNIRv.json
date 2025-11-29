@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2025-11-29T20:09:26.625Z",
+  "updatedAt": "2025-11-29T20:34:53.168Z",
   "createdAt": "2025-11-29T17:57:46.988Z",
   "id": "O59HjSzD4t2zNIRv",
   "name": "Generate Page",
@@ -9,30 +9,17 @@
   "nodes": [
     {
       "parameters": {
-        "title": "={{ $json.output[0].content[0].text }}",
-        "content": "={{ $json.output[0].content[0].text }}"
+        "title": "={{ $json.output.title }}",
+        "content": "={{ $json.output.description }}"
       },
       "type": "CUSTOM.genAiPageGenerationComplete",
       "typeVersion": 1,
       "position": [
-        688,
-        160
+        288,
+        -32
       ],
       "id": "ecdcb566-5b7f-4b40-b111-4b963cc34154",
       "name": "GenAI: PageGeneration Complete"
-    },
-    {
-      "parameters": {
-        "displayMessage": "Etape 1"
-      },
-      "type": "CUSTOM.genAiUpdateStatus",
-      "typeVersion": 1,
-      "position": [
-        336,
-        -128
-      ],
-      "id": "42dcc9e2-15ee-4460-878c-d5222d669f5e",
-      "name": "@ Update Status"
     },
     {
       "parameters": {},
@@ -48,39 +35,66 @@
     },
     {
       "parameters": {
-        "modelId": {
+        "jsonSchemaExample": "{\n\t\"title\": \"title of the page\",\n\t\"description\": \"description of the page\"\n}",
+        "autoFix": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        -80,
+        192
+      ],
+      "id": "83a6108c-3ded-4853-802d-897a90b032b5",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "model": {
           "__rl": true,
           "value": "chatgpt-4o-latest",
           "mode": "list",
-          "cachedResultName": "CHATGPT-4O-LATEST"
+          "cachedResultName": "chatgpt-4o-latest"
         },
-        "responses": {
-          "values": [
-            {
-              "content": "={{ $json.prompt }}"
-            },
-            {
-              "content": "Ecrit le brief marketing sur le theme envoyé. de 300 mots. "
-            }
-          ]
-        },
-        "builtInTools": {},
+        "responsesApiEnabled": false,
         "options": {}
       },
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2,
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
       "position": [
-        160,
-        144
+        -96,
+        400
       ],
-      "id": "23a6be34-2786-40b6-b341-445fcd399908",
-      "name": "Message a model",
+      "id": "616d3168-dfdd-4578-9c84-16902eb2e9eb",
+      "name": "OpenAI Chat Model",
       "credentials": {
         "openAiApi": {
           "id": "GOEK4j4pctiNhdgx",
           "name": "OpenAi account"
         }
       }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "Ecrit le titre et la description pour une page sur le theme fourni. retourne un json qui contient \"title\" et description, rien d'autre du pure json. "
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        -160,
+        -32
+      ],
+      "id": "a8e7f63c-4a15-48b5-b9b5-0a4d9a8c5734",
+      "name": "Generate Metadata"
     }
   ],
   "connections": {
@@ -88,19 +102,41 @@
       "main": [
         [
           {
-            "node": "Message a model",
+            "node": "Generate Metadata",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "@ Update Status": {
-      "main": [
-        []
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Generate Metadata",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Message a model": {
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Metadata",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Structured Output Parser",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Metadata": {
       "main": [
         [
           {
@@ -133,8 +169,8 @@
       }
     ]
   },
-  "versionId": "701f3fe1-b073-467c-9e50-3d98f62d2244",
-  "versionCounter": 46,
+  "versionId": "19763c0a-e769-4d3b-a8a3-62572ae3b788",
+  "versionCounter": 56,
   "triggerCount": 1,
   "tags": [],
   "shared": [
