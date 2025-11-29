@@ -37,6 +37,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Créer un builder avec le driver docker-container (nécessaire pour le cache GHA)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
       # Pré-pull des images de base avec retry (évite les timeouts réseau)
       - name: Pre-pull base images
         run: |
