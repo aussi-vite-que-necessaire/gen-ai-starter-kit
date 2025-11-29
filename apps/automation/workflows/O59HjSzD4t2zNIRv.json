@@ -1,8 +1,8 @@
 {
-  "updatedAt": "2025-11-29T18:34:32.720Z",
+  "updatedAt": "2025-11-29T19:04:17.403Z",
   "createdAt": "2025-11-29T17:57:46.988Z",
   "id": "O59HjSzD4t2zNIRv",
-  "name": "My workflow 4",
+  "name": "Generate Page",
   "description": null,
   "active": true,
   "isArchived": false,
@@ -65,7 +65,13 @@
           ]
         },
         "builtInTools": {},
-        "options": {}
+        "options": {
+          "reasoning": {
+            "reasoningOptions": {
+              "effort": "low"
+            }
+          }
+        }
       },
       "type": "@n8n/n8n-nodes-langchain.openAi",
       "typeVersion": 2,
@@ -133,8 +139,8 @@
       }
     ]
   },
-  "versionId": "5273960b-cba5-4564-abfa-2c8dbee8a2fb",
-  "versionCounter": 39,
+  "versionId": "47d7b68a-a65a-4ea2-87f2-26e7ba998639",
+  "versionCounter": 42,
   "triggerCount": 1,
   "tags": [],
   "shared": [
