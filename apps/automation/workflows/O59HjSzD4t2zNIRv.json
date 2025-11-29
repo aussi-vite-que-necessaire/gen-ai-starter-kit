@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2025-11-29T19:04:17.403Z",
+  "updatedAt": "2025-11-29T19:06:05.293Z",
   "createdAt": "2025-11-29T17:57:46.988Z",
   "id": "O59HjSzD4t2zNIRv",
   "name": "Generate Page",
@@ -39,7 +39,7 @@
       "type": "CUSTOM.genAiPageGenerationTrigger",
       "typeVersion": 1,
       "position": [
-        -208,
+        -384,
         -32
       ],
       "id": "49bd074e-fc7c-4883-a59f-d3313c68990d",
@@ -134,13 +134,35 @@
       {
         "json": {
           "userId": "k4xd0LFFBiJUCULyJLAGw7vtwGuvWmhU",
-          "prompt": "fezfzef"
+          "prompt": "Une belle page"
+        }
+      }
+    ],
+    "Message a model": [
+      {
+        "json": {
+          "output": [
+            {
+              "id": "msg_0f82be1ca1c0a5eb00692b43c3a7908195a7ac21b7c48047ae",
+              "type": "message",
+              "status": "completed",
+              "content": [
+                {
+                  "type": "output_text",
+                  "annotations": [],
+                  "logprobs": [],
+                  "text": "Super idée. Pour écrire exactement un brief marketing de 300 mots sur le thème envoyé, j’ai besoin du thème précis. Peux-tu coller le thème (ou me donner les éléments clés) ? Idéalement:\n- le public cible (persona)\n- l’objectif de la campagne (notoriété, trafic, conversion, fidélisation)\n- la promesse ou le message central\n- le ton souhaité (sérieux, chaleureux, audacieux, premium, accessible)\n- les canaux envisagés (réseaux sociaux, site web, newsletter, presse)\n- les KPI attendus\n\nSi tu préfères, je peux aussi te proposer une version prête à l’emploi sur un thème générique et l’ajuster ensuite dès que tu fournis le thème exact. Dis-moi ce qui te convient et je te livre un brief marketing de 300 mots, clair et prêt à être utilisé."
+                }
+              ],
+              "role": "assistant"
+            }
+          ]
         }
       }
     ]
   },
-  "versionId": "47d7b68a-a65a-4ea2-87f2-26e7ba998639",
-  "versionCounter": 42,
+  "versionId": "7707fad5-e90b-48d6-b7d6-e39aa31553ff",
+  "versionCounter": 44,
   "triggerCount": 1,
   "tags": [],
   "shared": [

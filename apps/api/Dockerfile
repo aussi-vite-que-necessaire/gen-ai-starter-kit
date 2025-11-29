@@ -12,8 +12,8 @@ COPY packages/shared ./packages/shared
 COPY apps/api/package*.json ./apps/api/
 COPY apps/api ./apps/api
 
-# Install depuis la racine (gère les workspaces)
-RUN npm install --workspace=@genai/shared --workspace=api
+# Install depuis la racine (gère les workspaces, skip husky)
+RUN npm install --workspace=@genai/shared --workspace=api --ignore-scripts
 
 WORKDIR /app/apps/api
 EXPOSE 3000

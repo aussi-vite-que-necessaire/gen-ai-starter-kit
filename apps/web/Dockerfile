@@ -13,8 +13,8 @@ COPY packages/shared ./packages/shared
 COPY apps/web/package*.json ./apps/web/
 COPY apps/web ./apps/web
 
-# Install depuis la racine (gère les workspaces)
-RUN npm install --workspace=@genai/shared --workspace=web
+# Install depuis la racine (gère les workspaces, skip husky)
+RUN npm install --workspace=@genai/shared --workspace=web --ignore-scripts
 
 # Build le shared puis le web
 WORKDIR /app/apps/web
