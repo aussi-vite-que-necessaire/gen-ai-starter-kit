@@ -190,23 +190,25 @@ jobs:
 
             echo "📥 Import des workflows et credentials n8n..."
 
-            # Télécharge credentials à la racine
-            curl -sf -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                 -o credentials.json \
-                 -L "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/workflows/credentials.json" || true
+            # Clone la branche PR pour avoir la liste des fichiers
+            git clone --depth 1 --branch ${{ github.event.pull_request.head.ref }} https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git repo-temp
 
             # Import credentials
-            docker compose -p $FOLDER_NAME cp credentials.json n8n:/tmp/credentials.json
-            docker compose -p $FOLDER_NAME exec -u node -T n8n n8n import:credentials --input=/tmp/credentials.json || echo "⚠️ Credentials import failed"
+            if [ -f repo-temp/apps/automation/workflows/credentials.json ]; then
+              docker compose -p $FOLDER_NAME cp repo-temp/apps/automation/workflows/credentials.json n8n:/tmp/credentials.json
+              docker compose -p $FOLDER_NAME exec -u node -T n8n n8n import:credentials --input=/tmp/credentials.json || echo "⚠️ Credentials import failed"
+            fi
 
-            # Import workflows un par un
-            for file in CE1aB6M2zzy6mHq7 FdlYe3ZEhP2R6L66 gK3EwEQLmGjhUuy9 MegPrvZxisBRYhLw O59HjSzD4t2zNIRv qN0tbdDK5ltRLCI4 YJBSKUGzYtUKymEu; do
-              curl -sf -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                   -o "${file}.json" \
-                   -L "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/workflows/${file}.json" || continue
-              docker compose -p $FOLDER_NAME cp "${file}.json" n8n:/tmp/workflow.json
-              docker compose -p $FOLDER_NAME exec -u node -T n8n n8n import:workflow --input=/tmp/workflow.json || echo "⚠️ Workflow ${file} import failed"
+            # Import tous les workflows (sauf credentials.json)
+            for file in repo-temp/apps/automation/workflows/*.json; do
+              filename=$(basename "$file")
+              if [ "$filename" != "credentials.json" ]; then
+                docker compose -p $FOLDER_NAME cp "$file" n8n:/tmp/workflow.json
+                docker compose -p $FOLDER_NAME exec -u node -T n8n n8n import:workflow --input=/tmp/workflow.json || echo "⚠️ Workflow $filename import failed"
+              fi
             done
+
+            rm -rf repo-temp
 
       - name: Comment PR URL
         uses: thollander/actions-comment-pull-request@v2
