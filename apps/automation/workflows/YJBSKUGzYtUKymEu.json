@@ -1,0 +1,152 @@
+{
+  "updatedAt": "2025-11-29T17:40:47.778Z",
+  "createdAt": "2025-11-29T17:17:49.329Z",
+  "id": "YJBSKUGzYtUKymEu",
+  "name": "Generate Page",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "CUSTOM.genAiPageGenerationTrigger",
+      "typeVersion": 1,
+      "position": [
+        -544,
+        -112
+      ],
+      "id": "f60ddf53-e744-4551-ac52-7818cdfc792e",
+      "name": "GenAI: PageGeneration Trigger",
+      "webhookId": "8605533a-ea4e-43fa-bb2d-e422721e2598"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "988ba246-f9e5-4b4d-a610-d63b285ba6cc",
+              "name": "title",
+              "value": "Hello",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -112,
+        -128
+      ],
+      "id": "424033e0-ee1c-41b3-9c2c-90684369ed6a",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "title": "={{ $json.title }}",
+        "content": "test"
+      },
+      "type": "CUSTOM.genAiPageGenerationComplete",
+      "typeVersion": 1,
+      "position": [
+        96,
+        -128
+      ],
+      "id": "1b57bcd5-4783-40d1-96db-91b9ed50a1d9",
+      "name": "GenAI: PageGeneration Complete"
+    },
+    {
+      "parameters": {
+        "displayMessage": "super"
+      },
+      "type": "CUSTOM.genAiUpdateStatus",
+      "typeVersion": 1,
+      "position": [
+        112,
+        96
+      ],
+      "id": "19e31bad-2c41-45b9-b9c6-37e74588abad",
+      "name": "GenAI: Update Status"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -432,
+        -288
+      ],
+      "id": "398b3c6d-f18a-4f5e-bd17-dbf7643383c5",
+      "name": "When clicking ‘Execute workflow’"
+    }
+  ],
+  "connections": {
+    "GenAI: PageGeneration Trigger": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "GenAI: PageGeneration Complete",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "GenAI: Update Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {},
+  "versionId": "11f9d992-8199-437f-b50f-9eacb1a6b4e0",
+  "versionCounter": 12,
+  "triggerCount": 0,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2025-11-29T17:17:49.329Z",
+      "createdAt": "2025-11-29T17:17:49.329Z",
+      "role": "workflow:owner",
+      "workflowId": "YJBSKUGzYtUKymEu",
+      "projectId": "UB6VcGqVOrq3em4j",
+      "project": {
+        "updatedAt": "2025-11-28T20:51:41.889Z",
+        "createdAt": "2025-11-28T20:51:10.705Z",
+        "id": "UB6VcGqVOrq3em4j",
+        "name": "Manu Bernard <sys@avqn.ch>",
+        "type": "personal",
+        "icon": null,
+        "description": null
+      }
+    }
+  ]
+}

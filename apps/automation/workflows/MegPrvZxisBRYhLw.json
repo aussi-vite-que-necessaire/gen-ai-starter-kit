@@ -1,11 +1,11 @@
 {
-  "updatedAt": "2025-11-28T23:16:41.721Z",
+  "updatedAt": "2025-11-29T17:17:44.647Z",
   "createdAt": "2025-11-28T23:07:30.229Z",
   "id": "MegPrvZxisBRYhLw",
   "name": "My workflow 3",
   "description": null,
   "active": false,
-  "isArchived": false,
+  "isArchived": true,
   "nodes": [],
   "connections": {},
   "settings": {
@@ -14,8 +14,8 @@
   "staticData": null,
   "meta": null,
   "pinData": {},
-  "versionId": "80d286cf-f4b1-4924-ae7e-046d17e8c8a7",
-  "versionCounter": 8,
+  "versionId": "f6f7b0c2-eead-42d3-a856-a994d69baa01",
+  "versionCounter": 9,
   "triggerCount": 0,
   "tags": [],
   "shared": [

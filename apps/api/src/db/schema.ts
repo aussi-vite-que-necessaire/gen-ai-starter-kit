@@ -74,6 +74,9 @@ export const verification = pgTable("verification", {
 export const workflows = pgTable("workflows", {
   id: uuid("id").defaultRandom().primaryKey(),
 
+  // n8n execution ID (set by trigger node)
+  executionId: text("execution_id"),
+
   // Statut
   status: workflowStatusEnum("status").default("PENDING").notNull(),
   displayMessage: text("display_message"),

@@ -46,7 +46,7 @@ export function startWorkers() {
               },
               body: JSON.stringify({
                 workflowId,
-                ...payload,
+                payload,
               }),
             }
           )

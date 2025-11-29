@@ -9,11 +9,14 @@
   "main": "dist/index.js",
   "n8n": {
     "nodes": [
-      "dist/nodes/GenAiApp/GenAiApp.node.js"
+      "dist/nodes/generated/GenAiUpdateStatus.node.js",
+      "dist/nodes/generated/GenAiPageGenerationTrigger.node.js",
+      "dist/nodes/generated/GenAiPageGenerationComplete.node.js"
     ]
   },
   "scripts": {
-    "build": "tsc",
+    "generate": "tsx scripts/generate-nodes.ts",
+    "build": "npm run generate && tsc",
     "dev": "tsc --watch"
   },
   "files": [
@@ -21,6 +24,7 @@
   ],
   "devDependencies": {
     "n8n-workflow": "*",
+    "tsx": "^4.19.2",
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
