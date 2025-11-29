@@ -212,6 +212,11 @@ jobs:
             echo "🔌 Activation des workflows..."
             docker compose exec -u node -T n8n n8n update:workflow --all --active=true || echo "⚠️ Workflow activation failed"
 
+            # Restart n8n pour que les activations prennent effet
+            echo "🔄 Restart n8n pour activer les webhooks..."
+            docker compose restart n8n
+            sleep 15
+
             rm -rf repo-temp
 
             echo "✅ Déployé sur https://${{ vars.MAIN_DOMAIN }}"

@@ -114,6 +114,7 @@ services:
       # L'URL est définie dans le .env généré par le script de déploiement
       - WEBHOOK_URL=${N8N_URL}
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET}
+      - GENAI_API_URL=http://api:3000
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
       - N8N_BASIC_AUTH_ACTIVE=false
 
