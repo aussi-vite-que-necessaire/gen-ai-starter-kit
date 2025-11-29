@@ -1,12 +1,15 @@
 import { eq } from "drizzle-orm"
 import { db } from "../db"
 import { workflows } from "../db/schema"
-import { handlers, WorkflowType } from "./handlers"
+import { handlers } from "./handlers"
 import { addWorkflowJob } from "./queues"
 import { QueueName } from "./config"
+import type { WorkflowType } from "@genai/shared/workflows"
+import { isValidWorkflowType } from "@genai/shared/workflows"
 
 // Re-export
-export { handlers, WorkflowType, isValidWorkflowType } from "./handlers"
+export { handlers }
+export { isValidWorkflowType, type WorkflowType } from "@genai/shared/workflows"
 
 // --- START WORKFLOW ---
 

@@ -25,7 +25,7 @@ export const createApp = () => {
   )
 
   // Routes Auth (Better-Auth)
-  app.on(["POST", "GET"], "/api/auth/**", (c) => auth.handler(c.req.raw))
+  app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw))
 
   // Routes API (frontend)
   app.route("/api/pages", pagesRouter)
