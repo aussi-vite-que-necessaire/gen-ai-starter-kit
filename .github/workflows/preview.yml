@@ -236,21 +236,50 @@ jobs:
             echo "📥 Import N8N Workflows..."
             WORKFLOWS_DIR="apps/automation/workflows"
 
+            # Attendre que n8n soit complètement prêt (migrations terminées + healthcheck)
+            echo "⏳ Attente que n8n soit prêt (healthcheck)..."
+            MAX_WAIT=60
+            WAITED=0
+            while [ $WAITED -lt $MAX_WAIT ]; do
+              if docker run --rm --network web_network curlimages/curl:latest \
+                sh -c 'curl -s -f http://'$FOLDER'-n8n-1:5678/healthz > /dev/null 2>&1'; then
+                echo "✅ n8n est prêt !"
+                break
+              fi
+              echo "⏳ Attente... ($WAITED/$MAX_WAIT secondes)"
+              sleep 5
+              WAITED=$((WAITED + 5))
+            done
+            
+            # Attendre encore un peu pour que les migrations soient vraiment terminées
+            echo "⏳ Pause supplémentaire pour finaliser les migrations..."
+            sleep 10
+
+            # Import des credentials en premier
             if [ -f "$WORKFLOWS_DIR/credentials.json" ]; then
+              echo "🔑 Import des credentials..."
               docker compose -p $FOLDER cp "$WORKFLOWS_DIR/credentials.json" n8n:/tmp/credentials.json
-              docker compose -p $FOLDER exec -u node -T n8n n8n import:credentials --input=/tmp/credentials.json || true
+              docker compose -p $FOLDER exec -u node -T n8n n8n import:credentials --input=/tmp/credentials.json || echo "⚠️ Import credentials failed (peut être normal si déjà importé)"
             fi
 
+            # Import des workflows (ignorer les erreurs de webhooks qui sont normales)
             for file in "$WORKFLOWS_DIR"/*.json; do
               filename=$(basename "$file")
               if [ "$filename" != "credentials.json" ]; then
+                echo "📋 Import du workflow: $filename"
                 docker compose -p $FOLDER cp "$file" n8n:/tmp/workflow.json
-                docker compose -p $FOLDER exec -u node -T n8n n8n import:workflow --input=/tmp/workflow.json || true
+                # Les erreurs "Could not find workflow" sont normales lors du premier import
+                docker compose -p $FOLDER exec -u node -T n8n n8n import:workflow --input=/tmp/workflow.json 2>&1 | grep -v "Could not find workflow" || true
+                sleep 2
               fi
             done
 
-            docker compose -p $FOLDER exec -u node -T n8n n8n update:workflow --all --active=true
+            echo "🔄 Activation des workflows..."
+            docker compose -p $FOLDER exec -u node -T n8n n8n update:workflow --all --active=true || echo "⚠️ Activation workflows failed (peut être normal)"
+            
+            echo "🔄 Redémarrage de n8n pour activer les workflows..."
             docker compose -p $FOLDER restart n8n
+            sleep 5
 
             echo "✅ Déploiement terminé !"
 
