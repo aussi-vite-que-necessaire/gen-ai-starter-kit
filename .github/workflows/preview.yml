@@ -5,237 +5,267 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
-  deploy-preview:
+  # --- JOB 1 : BUILD IMAGES (PARALLÈLE) ---
+  build-images:
     runs-on: ubuntu-latest
-    timeout-minutes: 20 # Timeout plus long pour les téléchargements lents
+    strategy:
+      matrix:
+        service: [api, web]
     permissions:
       contents: read
       packages: write
-      pull-requests: write
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 1. FIX CASE SENSITIVITY
       - name: Lowercase Repo Name
-        run: |
-          echo "REPO_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
+        run: echo "REPO_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
 
-      # 2. CALCUL DES URLS
-      - name: Calculate Preview URLs
+      # Calcul des URLs pour le frontend (Vite needs it at build time)
+      - name: Calculate URLs
         id: urls
-        run: |
-          echo "API_URL=https://api-pr-${{ github.event.number }}.${{ vars.MAIN_DOMAIN }}" >> $GITHUB_OUTPUT
-          echo "WEB_URL=https://pr-${{ github.event.number }}.${{ vars.MAIN_DOMAIN }}" >> $GITHUB_OUTPUT
-          echo "N8N_URL=https://n8n-pr-${{ github.event.number }}.${{ vars.MAIN_DOMAIN }}" >> $GITHUB_OUTPUT
+        run: echo "API_URL=https://api-pr-${{ github.event.number }}.${{ vars.MAIN_DOMAIN }}" >> $GITHUB_OUTPUT
 
-      - name: Login to GitHub Container Registry
+      - name: Login to GHCR
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Créer un builder avec le driver docker-container (nécessaire pour le cache GHA)
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      # Pré-pull des images de base avec retry (évite les timeouts réseau)
-      - name: Pre-pull base images
-        run: |
-          for i in {1..3}; do
-            docker pull node:22-alpine && break || sleep 10
-          done
+      # Injection de l'URL API dans le build Web
+      - name: Create Web Env
+        if: matrix.service == 'web'
+        run: echo "VITE_API_URL=${{ steps.urls.outputs.API_URL }}" > ./apps/web/.env
 
-      # 3. BUILD API
-      - name: Build and Push API
+      - name: Build and Push ${{ matrix.service }}
         uses: docker/build-push-action@v4
         with:
           context: .
-          file: ./apps/api/Dockerfile
+          file: ./apps/${{ matrix.service }}/Dockerfile
           push: true
-          tags: ghcr.io/${{ env.REPO_LOWER }}/api:pr-${{ github.event.number }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Tag spécifique à la PR (ex: api:pr-12)
+          tags: ghcr.io/${{ env.REPO_LOWER }}/${{ matrix.service }}:pr-${{ github.event.number }}
+          cache-from: type=gha,scope=${{ matrix.service }}-pr
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}-pr
 
-      # 4. BUILD WEB
-      - name: Create Web Env for Preview
-        run: |
-          echo "VITE_API_URL=${{ steps.urls.outputs.API_URL }}" > ./apps/web/.env
-
-      - name: Build and Push Web
-        uses: docker/build-push-action@v4
+  # --- JOB 2 : BUILD N8N CUSTOM NODE ---
+  build-n8n-node:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Setup Node
+        uses: actions/setup-node@v3
         with:
-          context: .
-          file: ./apps/web/Dockerfile
-          push: true
-          tags: ghcr.io/${{ env.REPO_LOWER }}/web:pr-${{ github.event.number }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          node-version: 18
+          cache: "npm"
+          cache-dependency-path: apps/automation/custom-node/package-lock.json
+      - name: Build
+        run: |
+          cd apps/automation/custom-node
+          npm ci
+          npm run build
+          rm -rf node_modules
+          npm ci --omit=dev
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: n8n-custom-node
+          path: apps/automation/custom-node/
+          retention-days: 1
 
-      # 5. DEPLOY TO VPS
-      - name: Deploy Preview to VPS
+  # --- JOB 3 : DÉPLOIEMENT ---
+  deploy-preview:
+    needs: [build-images, build-n8n-node]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Lowercase Repo Name
+        run: echo "REPO_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
+
+      - name: Calculate Config
+        id: config
+        run: |
+          echo "PR_ID=pr-${{ github.event.number }}" >> $GITHUB_OUTPUT
+          echo "FOLDER_NAME=${{ vars.PROJECT_NAME }}-pr-${{ github.event.number }}" >> $GITHUB_OUTPUT
+          echo "WEB_URL=https://pr-${{ github.event.number }}.${{ vars.MAIN_DOMAIN }}" >> $GITHUB_OUTPUT
+          echo "API_URL=https://api-pr-${{ github.event.number }}.${{ vars.MAIN_DOMAIN }}" >> $GITHUB_OUTPUT
+          echo "N8N_URL=https://n8n-pr-${{ github.event.number }}.${{ vars.MAIN_DOMAIN }}" >> $GITHUB_OUTPUT
+
+      # Récupération de l'artefact N8N
+      - name: Download Custom Node
+        uses: actions/download-artifact@v4
+        with:
+          name: n8n-custom-node
+          path: apps/automation/custom-node
+
+      # Nettoyage dossier distant
+      - name: Clean Remote Directory
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
+            FOLDER="${{ steps.config.outputs.FOLDER_NAME }}"
+            mkdir -p apps/$FOLDER
+            cd apps/$FOLDER
+            # Nettoyage propre via docker alpine
+            docker run --rm -v "$(pwd):/clean" alpine rm -rf /clean/apps/automation
+
+      # Transfert fichiers
+      - name: Copy Config to VPS
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "docker-compose.yml,apps/automation/"
+          target: "apps/${{ steps.config.outputs.FOLDER_NAME }}"
+
+      # SSH Déploiement
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@master
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: DB_PASSWORD
+          script: |
+            export DB_PASSWORD=$DB_PASSWORD
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             # --- VARIABLES ---
-            PR_ID="pr-${{ github.event.number }}"
-            FOLDER_NAME="${{ vars.PROJECT_NAME }}-$PR_ID"
+            PR_TAG="${{ steps.config.outputs.PR_ID }}"
+            FOLDER="${{ steps.config.outputs.FOLDER_NAME }}"
+
+            # Noms de DB uniques par PR
+            # ex: gen_ai_starter_kit_pr_12_app
+            # On remplace les tirets par des underscores pour être SQL compliant
+            SAFE_PR_ID=$(echo "$PR_TAG" | tr '-' '_')
+            SAFE_PROJECT_NAME=$(echo "${{ vars.PROJECT_NAME }}" | tr '-' '_')
+
+            PROJECT_DB_APP="${SAFE_PROJECT_NAME}_${SAFE_PR_ID}_app"
+            PROJECT_DB_N8N="${SAFE_PROJECT_NAME}_${SAFE_PR_ID}_n8n"
+
+            # URL de connexion
+            export DATABASE_URL="postgresql://admin_postgres:$DB_PASSWORD@postgres-central:5432/$PROJECT_DB_APP?schema=public"
+
+            cd ~/apps/$FOLDER
+
+            # --- A. PROVISIONING DB (CENTRAL) ---
+            echo "🐘 Provisioning Database for PR..."
+            docker run --rm --network web_network \
+              -e PGPASSWORD=${{ secrets.CENTRAL_DB_PASSWORD }} \
+              postgres:16-alpine \
+              sh -c "
+                createdb -h postgres-central -U admin_postgres $PROJECT_DB_APP || true
+                createdb -h postgres-central -U admin_postgres $PROJECT_DB_N8N || true
+              "
+
+            # --- B. ENV ---
+            echo "🔧 Génération .env..."
             REPO_LOWER="${{ env.REPO_LOWER }}"
 
-            WEB_DOMAIN="$PR_ID.${{ vars.MAIN_DOMAIN }}"
-            API_DOMAIN="api-$PR_ID.${{ vars.MAIN_DOMAIN }}"
-            N8N_DOMAIN="n8n-$PR_ID.${{ vars.MAIN_DOMAIN }}"
-
-            mkdir -p ~/apps/$FOLDER_NAME
-            cd ~/apps/$FOLDER_NAME
-
-            # --- FICHIERS ---
-            # Création du dossier nécessaire pour le volume Docker
-            mkdir -p apps/automation/seed
-            mkdir -p apps/automation/custom-node
-
-            # 1. Docker Compose
-            curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                 -o docker-compose.yml \
-                 -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/docker-compose.yml
-
-            # 2. Script création DB (dans le sous-dossier car monté par volume)
-            curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                 -o apps/automation/seed/create-databases.sql \
-                 -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/seed/create-databases.sql
-
-            # 3. Seed n8n (A la RACINE pour simplifier l'injection manuelle)
-            curl -f -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                 -o init-n8n.sql \
-                 -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/seed/init-n8n.sql
-
-            # 4. Custom n8n nodes
-            echo "📦 Téléchargement custom nodes..."
-            curl -sf -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                 -o apps/automation/custom-node/package.json \
-                 -L https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/custom-node/package.json
-
-            mkdir -p apps/automation/custom-node/dist/nodes/generated
-            for file in index.js; do
-              curl -sf -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                   -o "apps/automation/custom-node/dist/${file}" \
-                   -L "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/custom-node/dist/${file}" || true
-            done
-            for file in GenAiUpdateStatus.node.js GenAiPageGenerationTrigger.node.js GenAiPageGenerationComplete.node.js; do
-              curl -sf -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                   -o "apps/automation/custom-node/dist/nodes/generated/${file}" \
-                   -L "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.ref }}/apps/automation/custom-node/dist/nodes/generated/${file}" || true
-            done
-
-            # --- ENV ---
             cat <<EOF > .env
-            IMAGE_NAME_API=ghcr.io/$REPO_LOWER/api:$PR_ID
-            IMAGE_NAME_WEB=ghcr.io/$REPO_LOWER/web:$PR_ID
-            PROJECT_NAME=$FOLDER_NAME
-            ENV_TYPE=preview
+            # Images taggées par PR
+            IMAGE_NAME_API=ghcr.io/$REPO_LOWER/api:$PR_TAG
+            IMAGE_NAME_WEB=ghcr.io/$REPO_LOWER/web:$PR_TAG
+            IMAGE_NAME_N8N=n8nio/n8n:latest 
 
-            DOMAIN_NAME_WEB=$WEB_DOMAIN
-            DOMAIN_NAME_API=$API_DOMAIN
-            DOMAIN_NAME_N8N=$N8N_DOMAIN
+            # Config DB PR
+            POSTGRES_USER=admin_postgres
+            DB_PASSWORD=$DB_PASSWORD
+            POSTGRES_DB_APP=$PROJECT_DB_APP
+            POSTGRES_DB_N8N=$PROJECT_DB_N8N
 
-            N8N_URL=https://$N8N_DOMAIN
-            INTERNAL_API_SECRET=${{ secrets.INTERNAL_API_SECRET }}
-            N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}
-
+            # Config App PR
+            PROJECT_NAME=$FOLDER
             NODE_ENV=production
             PORT=3000
-            FRONTEND_URL=https://$WEB_DOMAIN
 
-            DATABASE_URL=postgresql://app_user:${{ secrets.DB_PASSWORD }}@db:5432/webapp
+            # URLs PR
+            DOMAIN_NAME_WEB=${{ steps.config.outputs.PR_ID }}.${{ vars.MAIN_DOMAIN }}
+            DOMAIN_NAME_API=api-${{ steps.config.outputs.PR_ID }}.${{ vars.MAIN_DOMAIN }}
+            DOMAIN_NAME_N8N=n8n-${{ steps.config.outputs.PR_ID }}.${{ vars.MAIN_DOMAIN }}
+
+            FRONTEND_URL=${{ steps.config.outputs.WEB_URL }}
+            N8N_URL=${{ steps.config.outputs.N8N_URL }}
+            BETTER_AUTH_URL=${{ steps.config.outputs.API_URL }}
+            DATABASE_URL=$DATABASE_URL
+
+            # Secrets
+            INTERNAL_API_SECRET=${{ secrets.INTERNAL_API_SECRET }}
+            N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}
             REDIS_HOST=redis
             REDIS_PORT=6379
-
-            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-            POSTGRES_USER=app_user
-            POSTGRES_DB=webapp
-
-            BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}
-            BETTER_AUTH_URL=https://$API_DOMAIN
             EOF
+            chmod 600 .env
 
-            # --- SEQUENCE DE DÉMARRAGE ROBUSTE ---
+            # --- C. START ---
+            echo "🚀 Start Project $FOLDER..."
 
-            echo "📥 Pulling images..."
-            docker compose pull
+            # Important : Le nom du projet (-p) permet d'isoler les conteneurs de cette PR
+            docker compose -p $FOLDER pull
+            docker compose -p $FOLDER up -d --remove-orphans
 
-            echo "🧨 Reset DB (Clean Slate)..."
-            # Suppression du volume existant pour éviter les conflits de migration
-            docker compose -p $FOLDER_NAME down -v
+            # --- D. N8N DEPS ---
+            echo "📦 Installation dépendances N8N..."
+            docker run --rm \
+              -v $(pwd)/apps/automation/custom-node:/app \
+              -w /app \
+              node:22-alpine \
+              npm ci --omit=dev
 
-            echo "🚀 Démarrage DB & Redis..."
-            # On ne lance que la DB pour l'instant
-            docker compose -p $FOLDER_NAME up -d db redis
+            # Fix permissions
+            docker run --rm -v $(pwd)/apps/automation/custom-node:/app alpine chown -R 1000:1000 /app
 
-            echo "⏳ Attente disponibilité DB..."
-            until docker compose -p $FOLDER_NAME exec -T db pg_isready -U app_user -d webapp; do sleep 2; done
+            # Restart N8N pour charger les deps
+            docker compose -p $FOLDER restart n8n
 
-            echo "🛠 Création explicite de la base n8n..."
-            docker compose -p $FOLDER_NAME exec -T db psql -U app_user -d webapp -c "CREATE DATABASE n8n;" || echo "Database n8n already exists"
-
-            echo "💉 Injection du Seed Admin n8n..."
-            # 1. Copie du fichier SQL (depuis la racine du dossier vers /tmp dans le conteneur)
-            docker compose -p $FOLDER_NAME cp init-n8n.sql db:/tmp/init-n8n.sql
-
-            # 2. Exécution du fichier SQL dans la base n8n
-            docker compose -p $FOLDER_NAME exec -T db psql -U app_user -d n8n -f /tmp/init-n8n.sql || echo "Seed failed"
-
-            echo "🕵️‍♂️ VÉRIFICATION..."
-            docker compose -p $FOLDER_NAME exec -T db psql -U app_user -d n8n -c 'SELECT email FROM "user";'
-
+            # --- E. POST-DEPLOY ---
             echo "📦 Migrations API..."
-            docker compose -p $FOLDER_NAME run --rm api npm run db:migrate
+            docker compose -p $FOLDER run --rm -e DATABASE_URL=$DATABASE_URL api npm run db:migrate
 
-            echo "🌱 Seed utilisateur de test..."
-            docker compose -p $FOLDER_NAME run --rm api npm run db:seed
+            echo "🌱 Seed API..."
+            docker compose -p $FOLDER run --rm -e DATABASE_URL=$DATABASE_URL api npm run db:seed
 
-            echo "🚀 Démarrage Final (API, Web, n8n)..."
-            docker compose -p $FOLDER_NAME up -d
+            echo "📥 Import N8N Workflows..."
+            WORKFLOWS_DIR="apps/automation/workflows"
 
-            echo "⏳ Attente démarrage n8n..."
-            sleep 10
+            # Attente N8N ready (Healthcheck) pour éviter race condition
+            docker run --rm --network web_network curlimages/curl:latest \
+              sh -c 'until curl -s -f http://'$FOLDER'-n8n-1:5678/healthz > /dev/null; do sleep 3; done'
 
-            echo "📥 Import des workflows et credentials n8n..."
-
-            # Clone la branche PR pour avoir la liste des fichiers
-            git clone --depth 1 --branch ${{ github.event.pull_request.head.ref }} https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git repo-temp
-
-            # Import credentials
-            if [ -f repo-temp/apps/automation/workflows/credentials.json ]; then
-              docker compose -p $FOLDER_NAME cp repo-temp/apps/automation/workflows/credentials.json n8n:/tmp/credentials.json
-              docker compose -p $FOLDER_NAME exec -u node -T n8n n8n import:credentials --input=/tmp/credentials.json || echo "⚠️ Credentials import failed"
+            if [ -f "$WORKFLOWS_DIR/credentials.json" ]; then
+              docker compose -p $FOLDER cp "$WORKFLOWS_DIR/credentials.json" n8n:/tmp/credentials.json
+              docker compose -p $FOLDER exec -u node -T n8n n8n import:credentials --input=/tmp/credentials.json || true
             fi
 
-            # Import tous les workflows (sauf credentials.json)
-            for file in repo-temp/apps/automation/workflows/*.json; do
+            for file in "$WORKFLOWS_DIR"/*.json; do
               filename=$(basename "$file")
               if [ "$filename" != "credentials.json" ]; then
-                docker compose -p $FOLDER_NAME cp "$file" n8n:/tmp/workflow.json
-                docker compose -p $FOLDER_NAME exec -u node -T n8n n8n import:workflow --input=/tmp/workflow.json || echo "⚠️ Workflow $filename import failed"
+                docker compose -p $FOLDER cp "$file" n8n:/tmp/workflow.json
+                docker compose -p $FOLDER exec -u node -T n8n n8n import:workflow --input=/tmp/workflow.json || true
               fi
             done
 
-            # Activer tous les workflows
-            echo "🔌 Activation des workflows..."
-            docker compose -p $FOLDER_NAME exec -u node -T n8n n8n update:workflow --all --active=true || echo "⚠️ Workflow activation failed"
+            docker compose -p $FOLDER exec -u node -T n8n n8n update:workflow --all --active=true
 
-            # Restart n8n pour que les activations prennent effet
-            echo "🔄 Restart n8n pour activer les webhooks..."
-            docker compose -p $FOLDER_NAME restart n8n
-            sleep 15
+            # On ne redémarre pas N8N ici, les workflows sont actifs à chaud ou au prochain trigger
 
-            rm -rf repo-temp
+            echo "✅ Preview Déployée !"
 
       - name: Comment PR URL
         uses: thollander/actions-comment-pull-request@v2
@@ -243,7 +273,7 @@ jobs:
           message: |
             🚀 **Preview Environment Ready!**
 
-            🎨 **Frontend:** ${{ steps.urls.outputs.WEB_URL }}
-            ⚙️ **API:** ${{ steps.urls.outputs.API_URL }}
-            🤖 **n8n:** ${{ steps.urls.outputs.N8N_URL }}
+            🎨 **Frontend:** ${{ steps.config.outputs.WEB_URL }}
+            ⚙️ **API:** ${{ steps.config.outputs.API_URL }}
+            🤖 **n8n:** ${{ steps.config.outputs.N8N_URL }}
           comment_tag: execution

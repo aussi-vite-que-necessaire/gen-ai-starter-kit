@@ -10,32 +10,77 @@ jobs:
     steps:
       - name: Cleanup VPS
         uses: appleboy/ssh-action@master
+        env:
+          # On a besoin du pass Admin pour supprimer les bases
+          DB_PASSWORD: ${{ secrets.CENTRAL_DB_PASSWORD }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          envs: DB_PASSWORD
           script: |
+            export DB_PASSWORD=$DB_PASSWORD
+
+            # --- 1. CALCUL DES VARIABLES (Identique au Deploy) ---
             PR_ID="pr-${{ github.event.number }}"
-            # On doit recalculer le nom unique ici aussi
             FOLDER_NAME="${{ vars.PROJECT_NAME }}-$PR_ID"
             TARGET_DIR="$HOME/apps/$FOLDER_NAME"
 
+            # Reconstruction des noms de DB pour suppression
+            # On remplace les tirets par des underscores
+            SAFE_PR_ID=$(echo "$PR_ID" | tr '-' '_')
+            SAFE_PROJECT_NAME=$(echo "${{ vars.PROJECT_NAME }}" | tr '-' '_')
+
+            PROJECT_DB_APP="${SAFE_PROJECT_NAME}_${SAFE_PR_ID}_app"
+            PROJECT_DB_N8N="${SAFE_PROJECT_NAME}_${SAFE_PR_ID}_n8n"
+            PROJECT_DB_USER="${SAFE_PROJECT_NAME}_${SAFE_PR_ID}_user"
+
+            echo "🧹 Démarrage du nettoyage pour la PR #${{ github.event.number }}..."
+
+            # --- 2. SUPPRESSION DES BASES DE DONNÉES (CENTRAL) ---
+            echo "🗑 Suppression des bases de données sur Postgres Central..."
+
+            # On utilise un conteneur éphémère connecté au réseau web_network
+            docker run --rm --network web_network \
+              -e PGPASSWORD=$DB_PASSWORD \
+              postgres:16-alpine \
+              psql -h postgres-central -U admin_postgres -d postgres -c "
+                -- On coupe les connexions actives pour pouvoir supprimer
+                SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$PROJECT_DB_APP';
+                SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$PROJECT_DB_N8N';
+                
+                -- Suppression des bases
+                DROP DATABASE IF EXISTS \"$PROJECT_DB_APP\";
+                DROP DATABASE IF EXISTS \"$PROJECT_DB_N8N\";
+                
+                -- Suppression du user dédié à cette PR (optionnel, mais plus propre)
+                DROP ROLE IF EXISTS \"$PROJECT_DB_USER\";
+              " || echo "⚠️ Erreur non bloquante lors de la suppression DB"
+
+            # --- 3. SUPPRESSION DES CONTENEURS & DOSSIERS ---
             if [ -d "$TARGET_DIR" ]; then
               cd "$TARGET_DIR"
-              echo "🛑 Arrêt des services pour $FOLDER_NAME..."
-              # Supprime les conteneurs et les volumes SPÉCIFIQUES à cette PR
+              echo "🛑 Arrêt des services..."
+              
+              # Stop les conteneurs de cette PR spécifique
               docker compose -p $FOLDER_NAME down --volumes --remove-orphans
               
               cd ..
-              echo "🗑 Suppression du dossier..."
+              echo "🔥 Suppression du dossier..."
               rm -rf "$TARGET_DIR"
               
-              echo "✨ Grand Nettoyage du serveur..."
-              # Ici on peut y aller : on supprime toutes les images qui ne servent plus
-              # (Notamment celles de la PR qu'on vient de tuer)
-              docker system prune -a -f
+              # --- 4. NETTOYAGE DES IMAGES ---
+              echo "✨ Nettoyage des images Docker spécifiques..."
+              # On supprime spécifiquement les images taggées pour cette PR
+              # Le "|| true" évite que le script plante si l'image n'existe déjà plus
+              REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+              docker rmi ghcr.io/$REPO_LOWER/api:$PR_ID || true
+              docker rmi ghcr.io/$REPO_LOWER/web:$PR_ID || true
               
-              echo "✅ Cleaned up $FOLDER_NAME successfully"
+              # Nettoyage global léger
+              docker image prune -f
+              
+              echo "✅ Nettoyage terminé avec succès pour $FOLDER_NAME"
             else
-              echo "⚠️ Dossier $TARGET_DIR introuvable, rien à faire."
+              echo "⚠️ Dossier $TARGET_DIR introuvable, le nettoyage DB a été fait, mais pas de fichiers locaux."
             fi
