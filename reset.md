@@ -7,9 +7,9 @@ docker compose down --volumes --remove-orphans
 
 docker stop $(docker ps -q --filter name=gen-ai-starter-kit) 2>/dev/null
 
-docker exec -it postgres-central dropdb -U admin_postgres gen-ai-starter-kit_app
+docker exec -it database-central dropdb -U admin_postgres gen-ai-starter-kit_app
 
-docker exec -it postgres-central dropdb -U admin_postgres gen-ai-starter-kit_n8n
+docker exec -it database-central dropdb -U admin_postgres gen-ai-starter-kit_n8n
 
 # Étape 3 : Supprimer les fichiers
 

@@ -136,7 +136,7 @@ jobs:
 
             PROJECT_DB_APP="${{ vars.PROJECT_NAME }}_app"
             PROJECT_DB_N8N="${{ vars.PROJECT_NAME }}_n8n"
-            export DATABASE_URL="postgresql://admin_postgres:$DB_PASSWORD@postgres-central:5432/$PROJECT_DB_APP?schema=public"
+            export DATABASE_URL="postgresql://admin_postgres:$DB_PASSWORD@database-central:5432/$PROJECT_DB_APP?schema=public"
 
             cd ~/apps/${{ vars.PROJECT_NAME }}
 
@@ -146,8 +146,8 @@ jobs:
               -e PGPASSWORD=$DB_PASSWORD \
               postgres:16-alpine \
               sh -c "
-                createdb -h postgres-central -U admin_postgres $PROJECT_DB_APP || true
-                createdb -h postgres-central -U admin_postgres $PROJECT_DB_N8N || true
+                createdb -h database-central-U admin_postgres $PROJECT_DB_APP || true
+                createdb -h database-central-U admin_postgres $PROJECT_DB_N8N || true
               "
 
             # --- B. ENV ---
@@ -173,7 +173,6 @@ jobs:
             DATABASE_URL=$DATABASE_URL
             INTERNAL_API_SECRET=${{ secrets.INTERNAL_API_SECRET }}
             N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}
-            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
             BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}
             REDIS_HOST=redis
             REDIS_PORT=6379

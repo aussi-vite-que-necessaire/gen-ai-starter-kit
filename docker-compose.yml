@@ -15,7 +15,6 @@ services:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - BETTER_AUTH_URL=${BETTER_AUTH_URL}
       - FRONTEND_URL=${FRONTEND_URL}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - N8N_URL=${N8N_URL}
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET}
       - SMTP_HOST=mailpit
@@ -86,7 +85,7 @@ services:
 
       # Connexion DB (Variables injectées par le deploy.yml)
       - DB_TYPE=postgresdb
-      - DB_POSTGRESDB_HOST=postgres-central
+      - DB_POSTGRESDB_HOST=database-central
       - DB_POSTGRESDB_PORT=5432
       - DB_POSTGRESDB_DATABASE=${POSTGRES_DB_N8N}
       - DB_POSTGRESDB_USER=${POSTGRES_USER}

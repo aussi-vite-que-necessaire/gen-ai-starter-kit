@@ -1,0 +1,125 @@
+{
+  "updatedAt": "2025-11-30T20:30:12.238Z",
+  "createdAt": "2025-11-30T18:44:18.719Z",
+  "id": "0dHUnPHJA2pjwhqQ",
+  "name": "My workflow",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -592,
+        -96
+      ],
+      "id": "240c9418-30da-4178-a8ed-8941531a935f",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash-image-preview",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash-image-preview (Nano Banana)"
+        },
+        "prompt": "A cute banana smiling",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        48
+      ],
+      "id": "437e1f80-689e-4d6f-be2f-d1ca92b94b8d",
+      "name": "Generate an image",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "SkR4tfwTLPu7O1qf",
+          "name": "Gemini - (emm.bernard)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "bucketName": "public",
+        "fileName": "demo-banana",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.s3",
+      "typeVersion": 1,
+      "position": [
+        624,
+        0
+      ],
+      "id": "69e4e34d-17cc-41a2-8c67-93bbe169ef84",
+      "name": "Upload a file",
+      "credentials": {
+        "s3": {
+          "id": "tnTgwPFFyx75astf",
+          "name": "S3 account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Generate an image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate an image": {
+      "main": [
+        [
+          {
+            "node": "Upload a file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "fccb64be-ad4f-43d8-bb64-9f21ddf985b0",
+  "versionCounter": 3,
+  "triggerCount": 0,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2025-11-30T18:44:18.719Z",
+      "createdAt": "2025-11-30T18:44:18.719Z",
+      "role": "workflow:owner",
+      "workflowId": "0dHUnPHJA2pjwhqQ",
+      "projectId": "UB6VcGqVOrq3em4j",
+      "project": {
+        "updatedAt": "2025-11-28T20:51:41.889Z",
+        "createdAt": "2025-11-28T20:51:10.705Z",
+        "id": "UB6VcGqVOrq3em4j",
+        "name": "Manu Bernard <sys@avqn.ch>",
+        "type": "personal",
+        "icon": null,
+        "description": null
+      }
+    }
+  ]
+}
