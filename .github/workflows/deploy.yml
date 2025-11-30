@@ -140,16 +140,11 @@ jobs:
             docker compose pull
             docker compose up -d --remove-orphans
 
-            # --- ETAPE D : SEED N8N (Mode UPSERT & Attente) ---
+            # --- ETAPE D : SEED N8N (Automatisé & Upsert) ---
             echo "💉 Seed N8N..."
 
-            # 1. On remplace le user local par celui de prod
+            # 1. On remplace juste le nom du user de DB (app_user -> admin_postgres)
             sed -i 's/app_user/admin_postgres/g' apps/automation/seed/init-n8n.sql
-
-            # 2. MAGIE UPSERT ✨ : On transforme l'INSERT pour gérer les conflits
-            # On cherche la fin de la commande SQL ( ); ) et on y colle la règle de conflit
-            # Cela transforme "VALUES (...);" en "VALUES (...) ON CONFLICT (id) DO NOTHING;"
-            sed -i 's/);$/) ON CONFLICT (id) DO NOTHING;/' apps/automation/seed/init-n8n.sql
 
             docker run --rm --network web_network \
               -v $(pwd)/apps/automation/seed/init-n8n.sql:/tmp/init-n8n.sql \
@@ -158,7 +153,7 @@ jobs:
               bash -c "
                 echo '⏳ En attente que N8N initialise les tables...'
                 
-                # Boucle d'attente : On ping la DB toutes les 2s jusqu'à ce que la table 'user' existe
+                # Polling (Attente)
                 RETRIES=30
                 until psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -c 'SELECT 1 FROM \"user\" LIMIT 1' > /dev/null 2>&1 || [ \$RETRIES -eq 0 ]; do
                   echo \"... N8N travaille (\$RETRIES)...\"
@@ -167,14 +162,14 @@ jobs:
                 done
 
                 if [ \$RETRIES -eq 0 ]; then
-                  echo '❌ Timeout : N8N n a pas créé les tables à temps.'
+                  echo '❌ Timeout : N8N n a pas créé les tables.'
                   exit 1
                 fi
                 
-                echo '✅ Tables prêtes ! Injection du User (Si nécessaire)...'
+                echo '✅ Tables prêtes ! Mise à jour du User Admin...'
                 
-                # On lance le SQL. 
-                # Grâce au 'ON CONFLICT DO NOTHING' ajouté par sed, ça ne plantera jamais.
+                # On exécute le SQL généré localement.
+                # Il va créer l'user OU mettre à jour son mot de passe s'il existe déjà.
                 psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql
                 
                 echo '✅ Seed terminé.'
