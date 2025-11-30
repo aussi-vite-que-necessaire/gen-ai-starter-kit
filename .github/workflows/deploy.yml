@@ -21,6 +21,11 @@ jobs:
       - name: Lowercase Repo Name
         run: echo "REPO_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
 
+      - name: Create Web Env for Production
+        if: matrix.service == 'web'
+        run: |
+          echo "VITE_API_URL=https://api.${{ vars.MAIN_DOMAIN }}" > ./apps/web/.env
+
       - name: Login to GHCR
         uses: docker/login-action@v2
         with:
