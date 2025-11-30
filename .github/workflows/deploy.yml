@@ -140,10 +140,10 @@ jobs:
             docker compose pull
             docker compose up -d --remove-orphans
 
-            # --- ETAPE D : SEED N8N (Automatisé & Upsert) ---
+            # --- ETAPE D : SEED N8N (Méthode Try & Retry) ---
             echo "💉 Seed N8N..."
 
-            # 1. On remplace juste le nom du user de DB (app_user -> admin_postgres)
+            # 1. Remplacement du user
             sed -i 's/app_user/admin_postgres/g' apps/automation/seed/init-n8n.sql
 
             docker run --rm --network web_network \
@@ -151,28 +151,38 @@ jobs:
               -e PGPASSWORD=$DB_PASSWORD \
               postgres:16-alpine \
               bash -c "
-                echo '⏳ En attente que N8N initialise les tables...'
+                echo '⏳ Tentative d injection du Seed...'
                 
-                # Polling (Attente)
-                RETRIES=30
-                until psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -c 'SELECT 1 FROM \"user\" LIMIT 1' > /dev/null 2>&1 || [ \$RETRIES -eq 0 ]; do
-                  echo \"... N8N travaille (\$RETRIES)...\"
+                # BOUCLE DE ROBUSTESSE
+                # On essaie d'exécuter le fichier SQL.
+                # Tant que la commande échoue (exit code != 0), on attend et on réessaie.
+                # Cela couvre : Table inexistante, Colonne manquante, DB pas prête... TOUT.
+                
+                MAX_RETRIES=30
+                COUNT=0
+                SUCCESS=0
+                
+                while [ \$COUNT -lt \$MAX_RETRIES ]; do
+                  # On tente l'import en masquant les erreurs pour ne pas polluer les logs
+                  if psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql > /dev/null 2>&1; then
+                    echo '✅ Injection réussie !'
+                    SUCCESS=1
+                    break
+                  fi
+                  
+                  echo \"... N8N initialise encore la base (Tentative \$((COUNT+1))/\$MAX_RETRIES)...\"
                   sleep 2
-                  RETRIES=\$((RETRIES-1))
+                  COUNT=\$((COUNT+1))
                 done
 
-                if [ \$RETRIES -eq 0 ]; then
-                  echo '❌ Timeout : N8N n a pas créé les tables.'
+                if [ \$SUCCESS -eq 0 ]; then
+                  echo '❌ Échec : Impossible d injecter le seed après 60 secondes.'
+                  # On ré-exécute une fois sans masquer les erreurs pour voir le problème dans les logs
+                  psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql
                   exit 1
                 fi
                 
-                echo '✅ Tables prêtes ! Mise à jour du User Admin...'
-                
-                # On exécute le SQL généré localement.
-                # Il va créer l'user OU mettre à jour son mot de passe s'il existe déjà.
-                psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql
-                
-                echo '✅ Seed terminé.'
+                echo '✅ Seed terminé avec succès.'
               "
 
             # --- ETAPE E : POST-DEPLOY ---
