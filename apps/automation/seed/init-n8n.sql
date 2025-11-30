@@ -1,1 +1,14 @@
-INSERT INTO public."user" (id, email, "firstName", "lastName", password, "personalizationAnswers", "createdAt", "updatedAt", settings, disabled, "mfaEnabled", "mfaSecret", "mfaRecoveryCodes", "lastActiveAt", "roleSlug") VALUES ('6610a16a-eebc-4f9f-a276-6ac444e52959', 'sys@avqn.ch', 'Manu', 'Bernard', '$2a$10$j2WY7E81M14iA6VBcSK.JOq2EcMxtNGkn1B5IkM36/ep9g6b5Hlwq', '{"version":"v4","personalization_survey_submitted_at":"2025-11-28T20:51:44.116Z","personalization_survey_n8n_version":"1.121.3"}', '2025-11-28 20:51:10.389+00', '2025-11-30 08:03:36.4+00', '{"userActivated":true,"firstSuccessfulWorkflowId":"YJBSKUGzYtUKymEu","userActivatedAt":1764438598517,"easyAIWorkflowOnboarded":true}', false, false, NULL, NULL, '2025-11-30', 'global:owner') ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, "firstName" = EXCLUDED."firstName", "lastName" = EXCLUDED."lastName", password = EXCLUDED.password, "personalizationAnswers" = EXCLUDED."personalizationAnswers", settings = EXCLUDED.settings, "mfaEnabled" = EXCLUDED."mfaEnabled", "mfaSecret" = EXCLUDED."mfaSecret", "mfaRecoveryCodes" = EXCLUDED."mfaRecoveryCodes", "roleSlug" = EXCLUDED."roleSlug", "updatedAt" = EXCLUDED."updatedAt";
+INSERT INTO public."user" 
+("email", "firstName", "lastName", "password", "role", "createdAt", "updatedAt", "isPending")
+SELECT 
+  'sys@avqn.ch', 
+  'Manu', 
+  'Bernard', 
+  '$2a$10$j2WY7E81M14iA6VBcSK.JOq2EcMxtNGkn1B5IkM36/ep9g6b5Hlwq', 
+  'global:owner', 
+  NOW(), 
+  NOW(), 
+  false
+WHERE NOT EXISTS (
+    SELECT 1 FROM public."user" WHERE "email" = 'sys@avqn.ch'
+);

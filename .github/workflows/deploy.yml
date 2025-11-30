@@ -180,36 +180,35 @@ jobs:
             docker compose pull
             docker compose up -d --remove-orphans
 
-            # --- D. SEED N8N (Try & Retry) ---
-            echo "💉 Seed N8N..."
-            sed -i 's/app_user/admin_postgres/g' apps/automation/seed/init-n8n.sql
+            # --- ETAPE D : SEED N8N (Méthode HTTP Sûre) ---
+            echo "💉 Vérification Seed N8N..."
 
+            # 1. On attend que le serveur N8N soit 100% prêt (Migrations terminées)
+            # On utilise l'image curl pour pinguer l'API interne de n8n
+            docker run --rm --network web_network curlimages/curl:latest \
+              sh -c '
+                echo "⏳ Attente du démarrage complet de N8N..."
+                RETRIES=40
+                # On boucle tant que healthz ne répond pas 200 OK
+                until curl -s -f http://n8n:5678/healthz > /dev/null; do
+                  echo "... démarrage en cours ($RETRIES)..."
+                  sleep 3
+                  RETRIES=$((RETRIES-1))
+                  if [ $RETRIES -eq 0 ]; then echo "❌ Timeout : N8N ne démarre pas."; exit 1; fi
+                done
+                echo "✅ N8N est en ligne !"
+              '
+
+            # 2. Injection du User Admin
+            echo "👤 Injection de l'Admin..."
+
+            # On remplace le user générique par le user admin réel si besoin (ou on le laisse tel quel si ton SQL est en dur)
+            # Ici on exécute simplement le fichier SQL simplifié
             docker run --rm --network web_network \
               -v $(pwd)/apps/automation/seed/init-n8n.sql:/tmp/init-n8n.sql \
               -e PGPASSWORD=$DB_PASSWORD \
               postgres:16-alpine \
-              bash -c "
-                echo '⏳ Tentative d injection du Seed...'
-                MAX_RETRIES=30
-                COUNT=0
-                SUCCESS=0
-                while [ \$COUNT -lt \$MAX_RETRIES ]; do
-                  if psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql > /dev/null 2>&1; then
-                    echo '✅ Injection réussie !'
-                    SUCCESS=1
-                    break
-                  fi
-                  echo \"... N8N migre encore (Tentative \$((COUNT+1))/\$MAX_RETRIES)...\"
-                  sleep 2
-                  COUNT=\$((COUNT+1))
-                done
-
-                if [ \$SUCCESS -eq 0 ]; then
-                  echo '❌ Échec Seed.'
-                  psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql
-                  exit 1
-                fi
-              "
+              psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql
 
             # --- E. POST-DEPLOY ---
             echo "📦 Migrations API..."
