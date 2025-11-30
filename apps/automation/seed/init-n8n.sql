@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict RaFlibS03NW9P5NJnbZkqMwWeFIAZBVe144mCXu3Myd0ZFDg6mSin4maaewMHgn
+\restrict eOYBpxKhZDHRosMOZkaNVfGbP4NWZwZ3UfSgc8n2rU6j2VLKaYIXLi1a8AxCGdx
 
 -- Dumped from database version 15.15
 -- Dumped by pg_dump version 15.15
@@ -22,12 +22,12 @@ SET row_security = off;
 -- Data for Name: user; Type: TABLE DATA; Schema: public; Owner: app_user
 --
 
-INSERT INTO public."user" VALUES ('k4xd0LFFBiJUCULyJLAGw7vtwGuvWmhU', 'Manu', 'manu@avqn.ch', false, NULL, '2025-11-29 17:04:35.248', '2025-11-29 17:04:35.248');
+INSERT INTO public."user" (id, name, email, "emailVerified", image, "createdAt", "updatedAt") VALUES ('k4xd0LFFBiJUCULyJLAGw7vtwGuvWmhU', 'Manu', 'manu@avqn.ch', false, NULL, '2025-11-29 17:04:35.248', '2025-11-29 17:04:35.248');
 
 
 --
 -- PostgreSQL database dump complete
 --
 
-\unrestrict RaFlibS03NW9P5NJnbZkqMwWeFIAZBVe144mCXu3Myd0ZFDg6mSin4maaewMHgn
+\unrestrict eOYBpxKhZDHRosMOZkaNVfGbP4NWZwZ3UfSgc8n2rU6j2VLKaYIXLi1a8AxCGdx
 

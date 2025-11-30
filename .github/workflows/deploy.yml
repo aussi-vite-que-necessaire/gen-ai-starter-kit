@@ -140,11 +140,16 @@ jobs:
             docker compose pull
             docker compose up -d --remove-orphans
 
-            # --- ETAPE D : SEED N8N (Avec attente intelligente) ---
-            echo "💉 Vérification Seed N8N..."
+            # --- ETAPE D : SEED N8N (Mode UPSERT & Attente) ---
+            echo "💉 Seed N8N..."
 
-            # Préparation du fichier SQL
+            # 1. On remplace le user local par celui de prod
             sed -i 's/app_user/admin_postgres/g' apps/automation/seed/init-n8n.sql
+
+            # 2. MAGIE UPSERT ✨ : On transforme l'INSERT pour gérer les conflits
+            # On cherche la fin de la commande SQL ( ); ) et on y colle la règle de conflit
+            # Cela transforme "VALUES (...);" en "VALUES (...) ON CONFLICT (id) DO NOTHING;"
+            sed -i 's/);$/) ON CONFLICT (id) DO NOTHING;/' apps/automation/seed/init-n8n.sql
 
             docker run --rm --network web_network \
               -v $(pwd)/apps/automation/seed/init-n8n.sql:/tmp/init-n8n.sql \
@@ -153,11 +158,10 @@ jobs:
               bash -c "
                 echo '⏳ En attente que N8N initialise les tables...'
                 
-                # BOUCLE D'ATTENTE : On vérifie toutes les 2s si la table 'user' existe
-                # On essaie pendant 60 secondes max (30 x 2s)
+                # Boucle d'attente : On ping la DB toutes les 2s jusqu'à ce que la table 'user' existe
                 RETRIES=30
                 until psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -c 'SELECT 1 FROM \"user\" LIMIT 1' > /dev/null 2>&1 || [ \$RETRIES -eq 0 ]; do
-                  echo \"... N8N travaille encore, on patiente (\$RETRIES)...\"
+                  echo \"... N8N travaille (\$RETRIES)...\"
                   sleep 2
                   RETRIES=\$((RETRIES-1))
                 done
@@ -167,17 +171,13 @@ jobs:
                   exit 1
                 fi
                 
-                echo '✅ Tables détectées ! Vérification du contenu...'
-
-                # Maintenant on peut vérifier le contenu sans planter
-                COUNT=\$(psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -tAc 'SELECT COUNT(*) FROM \"user\"')
+                echo '✅ Tables prêtes ! Injection du User (Si nécessaire)...'
                 
-                if [ \"\$COUNT\" = \"0\" ]; then
-                   echo '📭 Table User vide. Injection du Admin...'
-                   psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql || echo '⚠️ Erreur SQL mineure (doublon possible)'
-                else
-                   echo '✅ Admin déjà présent.'
-                fi
+                # On lance le SQL. 
+                # Grâce au 'ON CONFLICT DO NOTHING' ajouté par sed, ça ne plantera jamais.
+                psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql
+                
+                echo '✅ Seed terminé.'
               "
 
             # --- ETAPE E : POST-DEPLOY ---

@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2025-11-30T13:22:31.983Z",
+  "updatedAt": "2025-11-30T13:27:15.898Z",
   "createdAt": "2025-11-29T17:57:46.988Z",
   "id": "O59HjSzD4t2zNIRv",
   "name": "Generate Page",
@@ -26,8 +26,8 @@
       "type": "CUSTOM.genAiPageGenerationTrigger",
       "typeVersion": 1,
       "position": [
-        -384,
-        -32
+        -624,
+        -128
       ],
       "id": "49bd074e-fc7c-4883-a59f-d3313c68990d",
       "name": "@ PageGeneration Trigger",
@@ -90,8 +90,8 @@
       "type": "@n8n/n8n-nodes-langchain.chainLlm",
       "typeVersion": 1.7,
       "position": [
-        -160,
-        -32
+        -320,
+        -48
       ],
       "id": "a8e7f63c-4a15-48b5-b9b5-0a4d9a8c5734",
       "name": "Generate Metadata"
@@ -209,8 +209,8 @@
       }
     ]
   },
-  "versionId": "c6eb3f73-e433-4de3-b228-cc454fa5a328",
-  "versionCounter": 58,
+  "versionId": "b87a2143-f91d-4fbe-be9e-126251c98085",
+  "versionCounter": 60,
   "triggerCount": 1,
   "tags": [],
   "shared": [
