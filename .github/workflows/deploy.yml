@@ -29,7 +29,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      # --- 1. BUILD ---
+      # --- 1. BUILD (Uniquement API et WEB) ---
       - name: Build API
         uses: docker/build-push-action@v4
         with:
@@ -50,15 +50,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build Custom N8N
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          file: ./apps/automation/Dockerfile
-          push: true
-          tags: ghcr.io/${{ env.REPO_LOWER }}/n8n-custom:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      # ❌ J'ai supprimé le build "Custom N8N" qui ne servait à rien et posait problème.
 
       # --- 2. CONFIG ---
       - name: Copy Config to VPS
@@ -67,7 +59,8 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          source: "docker-compose.yml,apps/automation/workflows/,apps/automation/seed/"
+          # On copie tout le dossier automation pour avoir les custom nodes et le seed
+          source: "docker-compose.yml,apps/automation/"
           target: "apps/${{ vars.PROJECT_NAME }}"
 
       # --- 3. DÉPLOIEMENT ---
@@ -81,7 +74,6 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           envs: DB_PASSWORD
           script: |
-            # --- INITIALISATION ---
             export DB_PASSWORD=$DB_PASSWORD
 
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
@@ -89,13 +81,12 @@ jobs:
 
             PROJECT_DB_APP="${{ vars.PROJECT_NAME }}_app"
             PROJECT_DB_N8N="${{ vars.PROJECT_NAME }}_n8n"
-
             export DATABASE_URL="postgresql://admin_postgres:$DB_PASSWORD@postgres-central:5432/$PROJECT_DB_APP?schema=public"
 
             cd ~/apps/${{ vars.PROJECT_NAME }}
 
-            # --- ETAPE A : CRÉATION DES BASES (si absentes) ---
-            echo "🐘 Provisioning Database on Central Postgres..."
+            # --- ETAPE A : CRÉATION DES BASES ---
+            echo "🐘 Provisioning Database..."
             docker run --rm --network web_network \
               -e PGPASSWORD=$DB_PASSWORD \
               postgres:16-alpine \
@@ -104,14 +95,16 @@ jobs:
                 createdb -h postgres-central -U admin_postgres $PROJECT_DB_N8N || true
               "
 
-            # --- ETAPE B : GÉNÉRATION .ENV ---
+            # --- ETAPE B : .ENV ---
             echo "🔧 Génération .env..."
             REPO_LOWER="${{ env.REPO_LOWER }}"
 
             cat <<EOF > .env
             IMAGE_NAME_API=ghcr.io/$REPO_LOWER/api:latest
             IMAGE_NAME_WEB=ghcr.io/$REPO_LOWER/web:latest
-            IMAGE_NAME_N8N=ghcr.io/$REPO_LOWER/n8n-custom:latest
+            # Retour à l'image officielle pour N8N
+            IMAGE_NAME_N8N=n8nio/n8n:latest 
+
             POSTGRES_USER=admin_postgres
             DB_PASSWORD=$DB_PASSWORD
             POSTGRES_DB_APP=$PROJECT_DB_APP
@@ -135,54 +128,37 @@ jobs:
             EOF
             chmod 600 .env
 
-            # --- ETAPE C : DÉMARRAGE (D'ABORD !) ---
+            # --- ETAPE C : START ---
             echo "📥 Pull & Start..."
             docker compose pull
             docker compose up -d --remove-orphans
 
-            # --- ETAPE D : SEED N8N (Méthode Try & Retry) ---
+            # --- ETAPE D : SEED N8N (SANS SED, SANS RETOUCHE) ---
             echo "💉 Seed N8N..."
 
-            # 1. Remplacement du user
-            sed -i 's/app_user/admin_postgres/g' apps/automation/seed/init-n8n.sql
+            # Plus de 'sed' pour changer le user. On assume que le fichier SQL est propre.
+            # On utilise directement le fichier tel quel.
 
             docker run --rm --network web_network \
               -v $(pwd)/apps/automation/seed/init-n8n.sql:/tmp/init-n8n.sql \
               -e PGPASSWORD=$DB_PASSWORD \
               postgres:16-alpine \
               bash -c "
-                echo '⏳ Tentative d injection du Seed...'
-                
-                # BOUCLE DE ROBUSTESSE
-                # On essaie d'exécuter le fichier SQL.
-                # Tant que la commande échoue (exit code != 0), on attend et on réessaie.
-                # Cela couvre : Table inexistante, Colonne manquante, DB pas prête... TOUT.
-                
-                MAX_RETRIES=30
-                COUNT=0
-                SUCCESS=0
-                
-                while [ \$COUNT -lt \$MAX_RETRIES ]; do
-                  # On tente l'import en masquant les erreurs pour ne pas polluer les logs
-                  if psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql > /dev/null 2>&1; then
-                    echo '✅ Injection réussie !'
-                    SUCCESS=1
-                    break
-                  fi
-                  
-                  echo \"... N8N initialise encore la base (Tentative \$((COUNT+1))/\$MAX_RETRIES)...\"
+                echo '⏳ Attente N8N...'
+                RETRIES=30
+                until psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -c 'SELECT 1 FROM \"user\" LIMIT 1' > /dev/null 2>&1 || [ \$RETRIES -eq 0 ]; do
                   sleep 2
-                  COUNT=\$((COUNT+1))
+                  RETRIES=\$((RETRIES-1))
                 done
 
-                if [ \$SUCCESS -eq 0 ]; then
-                  echo '❌ Échec : Impossible d injecter le seed après 60 secondes.'
-                  # On ré-exécute une fois sans masquer les erreurs pour voir le problème dans les logs
-                  psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql
+                if [ \$RETRIES -eq 0 ]; then
+                  echo '❌ Timeout N8N.'
                   exit 1
                 fi
                 
-                echo '✅ Seed terminé avec succès.'
+                echo '✅ Injection SQL...'
+                # On lance le fichier tel quel. On ne cache pas les erreurs pour voir si ça plante.
+                psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql
               "
 
             # --- ETAPE E : POST-DEPLOY ---
@@ -190,14 +166,12 @@ jobs:
             docker compose run --rm -e DATABASE_URL=$DATABASE_URL api npm run db:migrate
 
             echo "📥 Import N8N Workflows..."
-            # Pas besoin de sleep ici, on a déjà attendu avant le seed
-
             WORKFLOWS_DIR="apps/automation/workflows"
 
-            # Credentials (optionnel si tu les gères à la main)
+            # Credentials
             if [ -f "$WORKFLOWS_DIR/credentials.json" ]; then
               docker compose cp "$WORKFLOWS_DIR/credentials.json" n8n:/tmp/credentials.json
-              docker compose exec -u node -T n8n n8n import:credentials --input=/tmp/credentials.json || echo "⚠️ Credentials import failed"
+              docker compose exec -u node -T n8n n8n import:credentials --input=/tmp/credentials.json || true
             fi
 
             # Workflows
@@ -205,7 +179,7 @@ jobs:
               filename=$(basename "$file")
               if [ "$filename" != "credentials.json" ]; then
                 docker compose cp "$file" n8n:/tmp/workflow.json
-                docker compose exec -u node -T n8n n8n import:workflow --input=/tmp/workflow.json || echo "⚠️ Workflow $filename import failed"
+                docker compose exec -u node -T n8n n8n import:workflow --input=/tmp/workflow.json || true
               fi
             done
 

@@ -15,16 +15,19 @@ services:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - BETTER_AUTH_URL=${BETTER_AUTH_URL}
       - FRONTEND_URL=${FRONTEND_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - N8N_URL=${N8N_URL}
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET}
       - SMTP_HOST=mailpit
       - SMTP_PORT=1025
     labels:
       - "traefik.enable=true"
+      # Router API
       - "traefik.http.routers.${PROJECT_NAME}-api.rule=Host(`${DOMAIN_NAME_API}`)"
       - "traefik.http.routers.${PROJECT_NAME}-api.entrypoints=websecure"
       - "traefik.http.routers.${PROJECT_NAME}-api.tls.certresolver=myresolver"
       - "traefik.http.services.${PROJECT_NAME}-api.loadbalancer.server.port=3000"
+      # Rate Limit
       - "traefik.http.middlewares.limit-api.ratelimit.average=100"
       - "traefik.http.middlewares.limit-api.ratelimit.burst=50"
       - "traefik.http.routers.${PROJECT_NAME}-api.middlewares=limit-api"
@@ -37,6 +40,7 @@ services:
       - web_network
     labels:
       - "traefik.enable=true"
+      # Router Web
       - "traefik.http.routers.${PROJECT_NAME}-web.rule=Host(`${DOMAIN_NAME_WEB}`)"
       - "traefik.http.routers.${PROJECT_NAME}-web.entrypoints=websecure"
       - "traefik.http.routers.${PROJECT_NAME}-web.tls.certresolver=myresolver"
@@ -65,6 +69,7 @@ services:
 
   # --- N8N ---
   n8n:
+    # ✅ On utilise l'image officielle (plus besoin de build custom)
     image: n8nio/n8n:latest
     restart: always
     environment:
@@ -72,22 +77,29 @@ services:
       - N8N_PORT=5678
       - N8N_PROTOCOL=https
       - NODE_ENV=production
+      # URLs & Secrets
       - WEBHOOK_URL=${N8N_URL}
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET}
       - GENAI_API_URL=http://api:3000
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
       - N8N_BASIC_AUTH_ACTIVE=false
 
-      # Connexion DB (Synchronisé avec le .env généré par le script)
+      # Connexion DB (Variables injectées par le deploy.yml)
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres-central
       - DB_POSTGRESDB_PORT=5432
-      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB_N8N} # <--- CORRIGÉ : Utilise la variable
-      - DB_POSTGRESDB_USER=${POSTGRES_USER} # <--- CORRIGÉ : Utilise "admin_postgres" via la variable
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB_N8N}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER}
       - DB_POSTGRESDB_PASSWORD=${DB_PASSWORD}
+
     volumes:
+      # Persistance des données N8N
       - n8n_data:/home/node/.n8n
+
+      # 👇 C'EST ICI QUE LA MAGIE OPÈRE 👇
+      # On mappe ton dossier local (copié par scp) directement dans le dossier custom de N8N
       - ./apps/automation/custom-node:/home/node/.n8n/custom/n8n-nodes-genai-app
+
     depends_on:
       - redis
     networks:
@@ -101,7 +113,7 @@ services:
       - "traefik.http.services.${PROJECT_NAME}-n8n.loadbalancer.server.port=5678"
 
 volumes:
-  db_data:
+  db_data: # (Optionnel si tu n'utilises plus la DB locale, mais garde-le au cas où)
   n8n_data:
 
 networks:
