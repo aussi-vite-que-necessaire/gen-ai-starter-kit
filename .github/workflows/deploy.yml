@@ -73,6 +73,10 @@ jobs:
       # --- 3. DÉPLOIEMENT ---
       - name: Deploy to VPS
         uses: appleboy/ssh-action@master
+
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
@@ -146,7 +150,6 @@ jobs:
             DATABASE_URL=$DATABASE_URL
             INTERNAL_API_SECRET=${{ secrets.INTERNAL_API_SECRET }}
             N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}
-            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
             BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}
 
             # Redis
