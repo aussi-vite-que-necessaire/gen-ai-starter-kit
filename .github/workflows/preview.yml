@@ -250,7 +250,7 @@ jobs:
               sleep 5
               WAITED=$((WAITED + 5))
             done
-            
+
             # Attendre encore un peu pour que les migrations soient vraiment terminées
             echo "⏳ Pause supplémentaire pour finaliser les migrations..."
             sleep 10
@@ -276,7 +276,7 @@ jobs:
 
             echo "🔄 Activation des workflows..."
             docker compose -p $FOLDER exec -u node -T n8n n8n update:workflow --all --active=true || echo "⚠️ Activation workflows failed (peut être normal)"
-            
+
             echo "🔄 Redémarrage de n8n pour activer les workflows..."
             docker compose -p $FOLDER restart n8n
             sleep 5
