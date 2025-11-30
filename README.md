@@ -104,3 +104,5 @@ npm run db:migrate -w api    # Migrations
 npm run n8n:export       # Export manuel workflows
 npm run generate:nodes -w custom-node  # Rebuild nodes
 ```
+
+v2
