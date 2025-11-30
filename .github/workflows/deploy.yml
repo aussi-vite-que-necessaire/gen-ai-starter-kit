@@ -50,7 +50,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # ❌ J'ai supprimé le build "Custom N8N" qui ne servait à rien et posait problème.
+      - name: Clean Remote Directory
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            rm -rf apps/${{ vars.PROJECT_NAME }}/apps/automation
 
       # --- 2. CONFIG ---
       - name: Copy Config to VPS
