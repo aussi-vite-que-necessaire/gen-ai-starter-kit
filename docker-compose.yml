@@ -96,7 +96,6 @@ services:
       - n8n_data:/home/node/.n8n
       - ./apps/automation/custom-node:/home/node/.n8n/custom/n8n-nodes-genai-app
     depends_on:
-      - db
       - redis
     networks:
       - default
