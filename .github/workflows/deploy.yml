@@ -146,8 +146,8 @@ jobs:
               -e PGPASSWORD=$DB_PASSWORD \
               postgres:16-alpine \
               sh -c "
-                createdb -h database-central-U admin_postgres $PROJECT_DB_APP || true
-                createdb -h database-central-U admin_postgres $PROJECT_DB_N8N || true
+                createdb -h database-central -U admin_postgres $PROJECT_DB_APP || true
+                createdb -h database-central -U admin_postgres $PROJECT_DB_N8N || true
               "
 
             # --- B. ENV ---
