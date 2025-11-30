@@ -140,11 +140,10 @@ jobs:
             docker compose pull
             docker compose up -d --remove-orphans
 
-            # --- ETAPE D : SEED N8N (MAINTENANT QUE LA DB EST CRÉÉE PAR N8N) ---
+            # --- ETAPE D : SEED N8N (Avec attente intelligente) ---
             echo "💉 Vérification Seed N8N..."
-            sleep 10 # On laisse 10s à N8N pour créer les tables au premier lancement
 
-            # On prépare le fichier SQL (remplacement du user)
+            # Préparation du fichier SQL
             sed -i 's/app_user/admin_postgres/g' apps/automation/seed/init-n8n.sql
 
             docker run --rm --network web_network \
@@ -152,12 +151,30 @@ jobs:
               -e PGPASSWORD=$DB_PASSWORD \
               postgres:16-alpine \
               bash -c "
-                # On regarde s'il y a des users dans la table 'user' (qui existe maintenant !)
-                COUNT=\$(psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -tAc 'SELECT COUNT(*) FROM \"user\"' 2>/dev/null || echo 0)
+                echo '⏳ En attente que N8N initialise les tables...'
+                
+                # BOUCLE D'ATTENTE : On vérifie toutes les 2s si la table 'user' existe
+                # On essaie pendant 60 secondes max (30 x 2s)
+                RETRIES=30
+                until psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -c 'SELECT 1 FROM \"user\" LIMIT 1' > /dev/null 2>&1 || [ \$RETRIES -eq 0 ]; do
+                  echo \"... N8N travaille encore, on patiente (\$RETRIES)...\"
+                  sleep 2
+                  RETRIES=\$((RETRIES-1))
+                done
+
+                if [ \$RETRIES -eq 0 ]; then
+                  echo '❌ Timeout : N8N n a pas créé les tables à temps.'
+                  exit 1
+                fi
+                
+                echo '✅ Tables détectées ! Vérification du contenu...'
+
+                # Maintenant on peut vérifier le contenu sans planter
+                COUNT=\$(psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -tAc 'SELECT COUNT(*) FROM \"user\"')
                 
                 if [ \"\$COUNT\" = \"0\" ]; then
                    echo '📭 Table User vide. Injection du Admin...'
-                   psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql || echo '⚠️ Erreur SQL (peut-être doublon)'
+                   psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql || echo '⚠️ Erreur SQL mineure (doublon possible)'
                 else
                    echo '✅ Admin déjà présent.'
                 fi

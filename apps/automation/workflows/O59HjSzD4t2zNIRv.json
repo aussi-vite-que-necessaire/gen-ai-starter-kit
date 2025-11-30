@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2025-11-29T20:34:53.168Z",
+  "updatedAt": "2025-11-30T13:22:31.983Z",
   "createdAt": "2025-11-29T17:57:46.988Z",
   "id": "O59HjSzD4t2zNIRv",
   "name": "Generate Page",
@@ -9,13 +9,13 @@
   "nodes": [
     {
       "parameters": {
-        "title": "={{ $json.output.title }}",
-        "content": "={{ $json.output.description }}"
+        "title": "={{ $json.title }}",
+        "content": "={{ $json.description }}"
       },
       "type": "CUSTOM.genAiPageGenerationComplete",
       "typeVersion": 1,
       "position": [
-        288,
+        496,
         -32
       ],
       "id": "ecdcb566-5b7f-4b40-b111-4b963cc34154",
@@ -95,6 +95,35 @@
       ],
       "id": "a8e7f63c-4a15-48b5-b9b5-0a4d9a8c5734",
       "name": "Generate Metadata"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7d259ce6-382d-4982-85ad-56439bcb7c99",
+              "name": "title",
+              "value": "={{ $json.output.title }} 🫡",
+              "type": "string"
+            },
+            {
+              "id": "fa5dbc3f-695f-46cd-a4b1-4aeaefe04b5c",
+              "name": "description",
+              "value": "={{ $json.output.description }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        192,
+        -32
+      ],
+      "id": "63f299a9-814b-4dea-afb3-357f98b20f36",
+      "name": "Edit Fields"
     }
   ],
   "connections": {
@@ -140,6 +169,17 @@
       "main": [
         [
           {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
             "node": "GenAI: PageGeneration Complete",
             "type": "main",
             "index": 0
@@ -169,8 +209,8 @@
       }
     ]
   },
-  "versionId": "19763c0a-e769-4d3b-a8a3-62572ae3b788",
-  "versionCounter": 56,
+  "versionId": "c6eb3f73-e433-4de3-b228-cc454fa5a328",
+  "versionCounter": 58,
   "triggerCount": 1,
   "tags": [],
   "shared": [
