@@ -98,21 +98,24 @@ jobs:
             # On construit l'URL ici pour être sûr qu'elle pointe vers la bonne DB avec le compte Admin
             export DATABASE_URL="postgresql://admin_postgres:$DB_PASSWORD@postgres-central:5432/$PROJECT_DB_APP?schema=public"
 
-            # --- PROVISIONING SQL ---
+            # --- PROVISIONING DE LA MORT (Version Robuste) ---
             echo "🐘 Provisioning Database on Central Postgres..."
-            # On utilise admin_postgres pour créer les bases si elles manquent
-            docker run --rm --network host \
+
+            # On utilise l'image postgres pour lancer la commande 'createdb'
+            # C'est beaucoup plus fiable que d'essayer d'injecter du SQL
+            # Le "|| true" permet de ne pas planter si la base existe déjà
+
+            docker run --rm --network web_network \
               -e PGPASSWORD=$DB_PASSWORD \
               postgres:16-alpine \
-              psql -h 127.0.0.1 -U admin_postgres -d postgres -c "
-                /* Création DB App */
-                SELECT 'CREATE DATABASE \"$PROJECT_DB_APP\" OWNER \"admin_postgres\"'
-                WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$PROJECT_DB_APP')\gexec
-                
-                /* Création DB N8N */
-                SELECT 'CREATE DATABASE \"$PROJECT_DB_N8N\" OWNER \"admin_postgres\"'
-                WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$PROJECT_DB_N8N')\gexec
+              sh -c "
+                echo 'Tentative de création de la base APP : $PROJECT_DB_APP'
+                createdb -h postgres-central -U admin_postgres $PROJECT_DB_APP || echo '⚠️ La base App existe déjà (ou erreur mineure)'
+
+                echo 'Tentative de création de la base N8N : $PROJECT_DB_N8N'
+                createdb -h postgres-central -U admin_postgres $PROJECT_DB_N8N || echo '⚠️ La base N8N existe déjà (ou erreur mineure)'
               "
+
 
             # --- SETUP ENV ---
             cd ~/apps/${{ vars.PROJECT_NAME }}
