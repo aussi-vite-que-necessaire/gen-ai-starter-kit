@@ -7,7 +7,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20 # Timeout plus long pour les téléchargements lents
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: write
@@ -16,7 +16,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 1. FIX MINUSCULE
       - name: Lowercase Repo Name
         run: |
           echo "REPO_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
@@ -28,18 +27,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Créer un builder avec le driver docker-container (nécessaire pour le cache GHA)
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      # Pré-pull des images de base avec retry (évite les timeouts réseau)
+      # --- 1. BUILD DES IMAGES ---
+
       - name: Pre-pull base images
         run: |
           for i in {1..3}; do
             docker pull node:22-alpine && break || sleep 10
           done
 
-      # 2. BUILD API
       - name: Build and Push API
         uses: docker/build-push-action@v4
         with:
@@ -50,7 +48,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # 3. BUILD WEB
       - name: Create Web Env for Production
         run: |
           echo "VITE_API_URL=https://api.${{ vars.MAIN_DOMAIN }}" > ./apps/web/.env
@@ -65,7 +62,22 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # 4. DEPLOY TO VPS
+      # --- 2. TRANSFERT DE FICHIERS (SCP) ---
+      # ✅ OPTIMISATION : On envoie les fichiers de config directement via SSH
+      # Plus besoin de curl ou de git clone sur le serveur.
+      - name: Copy Config & automation files to VPS
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          # On copie tout ce dont on a besoin en une fois
+          source: "docker-compose.yml,apps/automation/seed/,apps/automation/custom-node/,apps/automation/workflows/"
+          target: "~/apps/${{ vars.PROJECT_NAME }}"
+          # Supprime les fichiers existants dans la cible pour éviter les conflits
+          rm: true
+
+      # --- 3. DÉPLOIEMENT SSH ---
       - name: Deploy to VPS
         uses: appleboy/ssh-action@master
         with:
@@ -75,56 +87,17 @@ jobs:
           script: |
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # Nettoyage prudent (uniquement images, pas les volumes !)
-            echo "🧹 Ménage pré-déploiement..."
-            docker system prune -a -f 
+            # ✅ SÉCURITÉ : On ne supprime QUE les images orphelines (dangling)
+            # Ça ne touchera pas aux images de tes autres projets !
+            echo "🧹 Nettoyage léger des images..."
+            docker image prune -f
 
-            mkdir -p ~/apps/${{ vars.PROJECT_NAME }}
             cd ~/apps/${{ vars.PROJECT_NAME }}
 
-            # Récupération de la variable minuscule
             REPO_LOWER="${{ env.REPO_LOWER }}"
 
-            # --- FICHIERS ---
-            mkdir -p apps/automation/seed
-            mkdir -p apps/automation/custom-node
-
-            # 1. Docker Compose
-            curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                 -o docker-compose.yml \
-                 -L https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml
-
-            # 2. Script création DB (dans le sous-dossier)
-            curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                 -o apps/automation/seed/create-databases.sql \
-                 -L https://raw.githubusercontent.com/${{ github.repository }}/main/apps/automation/seed/create-databases.sql
-
-            # 3. Seed n8n (A la RACINE pour simplifier le 'docker cp')
-            curl -f -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                 -o init-n8n.sql \
-                 -L https://raw.githubusercontent.com/${{ github.repository }}/main/apps/automation/seed/init-n8n.sql
-
-            # 4. Custom n8n nodes
-            echo "📦 Téléchargement custom nodes..."
-            curl -sf -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                 -o apps/automation/custom-node/package.json \
-                 -L https://raw.githubusercontent.com/${{ github.repository }}/main/apps/automation/custom-node/package.json
-
-            # Télécharge le dossier dist (fichiers compilés)
-            mkdir -p apps/automation/custom-node/dist/nodes/generated
-            for file in index.js; do
-              curl -sf -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                   -o "apps/automation/custom-node/dist/${file}" \
-                   -L "https://raw.githubusercontent.com/${{ github.repository }}/main/apps/automation/custom-node/dist/${file}" || true
-            done
-            for file in GenAiUpdateStatus.node.js GenAiPageGenerationTrigger.node.js GenAiPageGenerationComplete.node.js; do
-              curl -sf -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                   -o "apps/automation/custom-node/dist/nodes/generated/${file}" \
-                   -L "https://raw.githubusercontent.com/${{ github.repository }}/main/apps/automation/custom-node/dist/nodes/generated/${file}" || true
-            done
-
             # --- ENV ---
-            echo "Génération du fichier .env..."
+            echo "🔧 Génération du fichier .env..."
             cat <<EOF > .env
             # --- DOCKER ---
             IMAGE_NAME_API=ghcr.io/$REPO_LOWER/api:latest
@@ -165,12 +138,10 @@ jobs:
 
             chmod 600 .env
 
-            # --- SÉQUENCE DE DÉMARRAGE (PROD SAFE) ---
+            # --- SÉQUENCE DE DÉMARRAGE ---
 
             echo "📥 Pulling images..."
             docker compose pull
-
-            # PAS DE RESET DB ICI (PROD) !
 
             echo "🚀 Démarrage DB & Redis..."
             docker compose up -d db redis
@@ -182,10 +153,11 @@ jobs:
             docker compose exec -T db psql -U app_user -d webapp -c "CREATE DATABASE n8n;" || echo "Database n8n already exists"
 
             echo "💉 Vérification Seed Admin n8n..."
-            # On vérifie si la table user existe déjà dans n8n. Si oui, on ne touche à rien pour ne pas écraser la prod.
+            # On utilise le fichier qu'on a envoyé via SCP
             if ! docker compose exec -T db psql -U app_user -d n8n -c 'SELECT 1 FROM "user" LIMIT 1;' > /dev/null 2>&1; then
                 echo "📭 Base n8n vide. Injection du Seed..."
-                docker compose cp init-n8n.sql db:/tmp/init-n8n.sql
+                # Le fichier est dans apps/automation/seed/ grâce au SCP
+                docker compose cp apps/automation/seed/init-n8n.sql db:/tmp/init-n8n.sql
                 docker compose exec -T db psql -U app_user -d n8n -f /tmp/init-n8n.sql
             else
                 echo "✅ Base n8n déjà initialisée. Skip seed."
@@ -198,7 +170,6 @@ jobs:
             }
 
             echo "🚀 Démarrage Final..."
-            # --remove-orphans nettoie les vieux conteneurs si tu as changé le docker-compose
             docker compose up -d --remove-orphans
 
             echo "⏳ Attente démarrage n8n..."
@@ -206,17 +177,19 @@ jobs:
 
             echo "📥 Import des workflows et credentials n8n..."
 
-            # Clone le repo pour avoir la liste des fichiers
-            git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git repo-temp
+            # ✅ OPTIMISATION : On utilise les fichiers locaux transférés par SCP
+            # Plus de git clone ici !
+
+            WORKFLOWS_DIR="apps/automation/workflows"
 
             # Import credentials
-            if [ -f repo-temp/apps/automation/workflows/credentials.json ]; then
-              docker compose cp repo-temp/apps/automation/workflows/credentials.json n8n:/tmp/credentials.json
+            if [ -f "$WORKFLOWS_DIR/credentials.json" ]; then
+              docker compose cp "$WORKFLOWS_DIR/credentials.json" n8n:/tmp/credentials.json
               docker compose exec -u node -T n8n n8n import:credentials --input=/tmp/credentials.json || echo "⚠️ Credentials import failed"
             fi
 
-            # Import tous les workflows (sauf credentials.json)
-            for file in repo-temp/apps/automation/workflows/*.json; do
+            # Import tous les workflows
+            for file in "$WORKFLOWS_DIR"/*.json; do
               filename=$(basename "$file")
               if [ "$filename" != "credentials.json" ]; then
                 docker compose cp "$file" n8n:/tmp/workflow.json
@@ -224,15 +197,10 @@ jobs:
               fi
             done
 
-            # Activer tous les workflows
             echo "🔌 Activation des workflows..."
             docker compose exec -u node -T n8n n8n update:workflow --all --active=true || echo "⚠️ Workflow activation failed"
 
-            # Restart n8n pour que les activations prennent effet
             echo "🔄 Restart n8n pour activer les webhooks..."
             docker compose restart n8n
-            sleep 15
 
-            rm -rf repo-temp
-
-            echo "✅ Déployé sur https://${{ vars.MAIN_DOMAIN }}"
+            echo "✅ Déploiement terminé sur https://${{ vars.MAIN_DOMAIN }}"
