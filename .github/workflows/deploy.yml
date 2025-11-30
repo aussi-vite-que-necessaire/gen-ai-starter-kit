@@ -29,7 +29,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      # --- 1. BUILD DES IMAGES ---
+      # --- 1. BUILD ---
       - name: Build API
         uses: docker/build-push-action@v4
         with:
@@ -60,7 +60,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # --- 2. ENVOI DES FICHIERS DE CONFIG ---
+      # --- 2. CONFIG ---
       - name: Copy Config to VPS
         uses: appleboy/scp-action@master
         with:
@@ -70,11 +70,11 @@ jobs:
           source: "docker-compose.yml,apps/automation/workflows/,apps/automation/seed/"
           target: "apps/${{ vars.PROJECT_NAME }}"
 
-      # --- 3. DÉPLOIEMENT SUR LE VPS ---
+      # --- 3. DÉPLOIEMENT ---
       - name: Deploy to VPS
         uses: appleboy/ssh-action@master
         env:
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }} # Déballage du secret ici
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
@@ -84,18 +84,14 @@ jobs:
             # --- INITIALISATION ---
             export DB_PASSWORD=$DB_PASSWORD
 
-            # Login Docker
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker image prune -f
 
-            # Définition des noms de DB
             PROJECT_DB_APP="${{ vars.PROJECT_NAME }}_app"
             PROJECT_DB_N8N="${{ vars.PROJECT_NAME }}_n8n"
 
-            # Construction de l'URL pour l'API (avec le user Admin)
             export DATABASE_URL="postgresql://admin_postgres:$DB_PASSWORD@postgres-central:5432/$PROJECT_DB_APP?schema=public"
 
-            # Aller dans le dossier du projet
             cd ~/apps/${{ vars.PROJECT_NAME }}
 
             # --- ETAPE A : CRÉATION DES BASES (si absentes) ---
@@ -108,89 +104,75 @@ jobs:
                 createdb -h postgres-central -U admin_postgres $PROJECT_DB_N8N || true
               "
 
-            # --- ETAPE B : SEED N8N (CRUCIAL : AVANT LE START !) ---
-            echo "💉 Préparation Seed N8N..."
-
-            # 1. On arrête N8N pour être sûr qu'il ne crée pas de tables vides
-            docker compose stop n8n || true
-
-            # 2. On remplace 'app_user' par 'admin_postgres' dans le fichier SQL
-            sed -i 's/app_user/admin_postgres/g' apps/automation/seed/init-n8n.sql
-
-            # 3. Injection du Seed
-            docker run --rm --network web_network \
-              -v $(pwd)/apps/automation/seed/init-n8n.sql:/tmp/init-n8n.sql \
-              -e PGPASSWORD=$DB_PASSWORD \
-              postgres:16-alpine \
-              bash -c "
-                # On compte les users. Si 0 ou erreur, on injecte.
-                COUNT=\$(psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -tAc 'SELECT COUNT(*) FROM \"user\"' 2>/dev/null || echo 0)
-                
-                if [ \"\$COUNT\" = \"0\" ]; then
-                   echo '📭 Base N8N vide. Injection du seed...'
-                   psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql || echo '⚠️ Erreurs SQL ignorées'
-                else
-                   echo '✅ Base N8N déjà peuplée.'
-                fi
-              "
-
-            # --- ETAPE C : GÉNÉRATION .ENV ---
+            # --- ETAPE B : GÉNÉRATION .ENV ---
             echo "🔧 Génération .env..."
             REPO_LOWER="${{ env.REPO_LOWER }}"
 
             cat <<EOF > .env
-            # Images
             IMAGE_NAME_API=ghcr.io/$REPO_LOWER/api:latest
             IMAGE_NAME_WEB=ghcr.io/$REPO_LOWER/web:latest
             IMAGE_NAME_N8N=ghcr.io/$REPO_LOWER/n8n-custom:latest
-
-            # DB Config (Admin partout)
             POSTGRES_USER=admin_postgres
             DB_PASSWORD=$DB_PASSWORD
             POSTGRES_DB_APP=$PROJECT_DB_APP
             POSTGRES_DB_N8N=$PROJECT_DB_N8N
-
-            # App Config
             PROJECT_NAME=${{ vars.PROJECT_NAME }}
             NODE_ENV=production
             PORT=3000
-
-            # URLs
             DOMAIN_NAME_WEB=${{ vars.MAIN_DOMAIN }}
             DOMAIN_NAME_API=api.${{ vars.MAIN_DOMAIN }}
             DOMAIN_NAME_N8N=n8n.${{ vars.MAIN_DOMAIN }}
             FRONTEND_URL=https://${{ vars.MAIN_DOMAIN }}
             N8N_URL=https://n8n.${{ vars.MAIN_DOMAIN }}
             BETTER_AUTH_URL=https://api.${{ vars.MAIN_DOMAIN }}
-
-            # Secrets
             DATABASE_URL=$DATABASE_URL
             INTERNAL_API_SECRET=${{ secrets.INTERNAL_API_SECRET }}
             N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
             BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}
-
-            # Redis
             REDIS_HOST=redis
             REDIS_PORT=6379
             EOF
             chmod 600 .env
 
-            # --- ETAPE D : DÉMARRAGE ---
+            # --- ETAPE C : DÉMARRAGE (D'ABORD !) ---
             echo "📥 Pull & Start..."
             docker compose pull
             docker compose up -d --remove-orphans
 
-            # --- ETAPE E : POST-DEPLOY (Migrations & Imports) ---
+            # --- ETAPE D : SEED N8N (MAINTENANT QUE LA DB EST CRÉÉE PAR N8N) ---
+            echo "💉 Vérification Seed N8N..."
+            sleep 10 # On laisse 10s à N8N pour créer les tables au premier lancement
+
+            # On prépare le fichier SQL (remplacement du user)
+            sed -i 's/app_user/admin_postgres/g' apps/automation/seed/init-n8n.sql
+
+            docker run --rm --network web_network \
+              -v $(pwd)/apps/automation/seed/init-n8n.sql:/tmp/init-n8n.sql \
+              -e PGPASSWORD=$DB_PASSWORD \
+              postgres:16-alpine \
+              bash -c "
+                # On regarde s'il y a des users dans la table 'user' (qui existe maintenant !)
+                COUNT=\$(psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -tAc 'SELECT COUNT(*) FROM \"user\"' 2>/dev/null || echo 0)
+                
+                if [ \"\$COUNT\" = \"0\" ]; then
+                   echo '📭 Table User vide. Injection du Admin...'
+                   psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql || echo '⚠️ Erreur SQL (peut-être doublon)'
+                else
+                   echo '✅ Admin déjà présent.'
+                fi
+              "
+
+            # --- ETAPE E : POST-DEPLOY ---
             echo "📦 Migrations API..."
             docker compose run --rm -e DATABASE_URL=$DATABASE_URL api npm run db:migrate
 
             echo "📥 Import N8N Workflows..."
-            sleep 15 # Attente démarrage N8N
+            # Pas besoin de sleep ici, on a déjà attendu avant le seed
 
             WORKFLOWS_DIR="apps/automation/workflows"
 
-            # Credentials
+            # Credentials (optionnel si tu les gères à la main)
             if [ -f "$WORKFLOWS_DIR/credentials.json" ]; then
               docker compose cp "$WORKFLOWS_DIR/credentials.json" n8n:/tmp/credentials.json
               docker compose exec -u node -T n8n n8n import:credentials --input=/tmp/credentials.json || echo "⚠️ Credentials import failed"
@@ -205,7 +187,6 @@ jobs:
               fi
             done
 
-            # Activation
             docker compose exec -u node -T n8n n8n update:workflow --all --active=true
             docker compose restart n8n
 

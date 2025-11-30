@@ -17,7 +17,7 @@
     "n8n:restart": "docker restart gen-ai-starter-kit-n8n",
     "n8n:export": "rm -f apps/automation/workflows/*.json && docker exec -u node gen-ai-starter-kit-n8n rm -rf /home/node/backups && docker exec -u node gen-ai-starter-kit-n8n mkdir -p /home/node/backups && docker exec -u node gen-ai-starter-kit-n8n n8n export:workflow --backup --output=/home/node/backups/ && (docker exec -u node gen-ai-starter-kit-n8n n8n export:credentials --all --encrypted --output=/home/node/backups/credentials.json || true) && docker cp gen-ai-starter-kit-n8n:/home/node/backups/. ./apps/automation/workflows/",
     "n8n:import": "docker cp ./apps/automation/workflows/. gen-ai-starter-kit-n8n:/home/node/backups/ && docker exec -u node gen-ai-starter-kit-n8n n8n import:workflow --input=/home/node/backups/ && docker exec -u node gen-ai-starter-kit-n8n n8n import:credentials --input=/home/node/backups/credentials.json",
-    "n8n:seed:save": "docker exec gen-ai-starter-kit-db pg_dump -U app_user -d webapp --clean --if-exists > apps/automation/seed/init-n8n.sql",
+    "n8n:seed:save": "docker exec gen-ai-starter-kit-db pg_dump -U app_user -d webapp --data-only --table='public.\"user\"' --inserts > apps/automation/seed/init-n8n.sql",
     "--- DATABASE ---": "---",
     "db:studio": "cd apps/api && npm run db:studio",
     "db:migrate": "cd apps/api && npm run db:migrate",
