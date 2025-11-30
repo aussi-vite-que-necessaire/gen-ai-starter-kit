@@ -64,18 +64,30 @@ jobs:
 
       # --- 2. TRANSFERT DE FICHIERS (SCP) ---
       # ✅ OPTIMISATION : On envoie les fichiers de config directement via SSH
-      # Plus besoin de curl ou de git clone sur le serveur.
+      # ÉTAPE A : On nettoie le dossier via SSH (plus robuste que le rm du SCP)
+      - name: Clean Target Directory
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            # On supprime le dossier de configuration existant pour éviter les conflits
+            # Note : Cela ne supprime PAS tes données (DB/N8N) car elles sont dans des volumes Docker nommés (/var/lib/docker/volumes)
+            rm -rf ~/apps/${{ vars.PROJECT_NAME }}
+            mkdir -p ~/apps/${{ vars.PROJECT_NAME }}
+
+      # ÉTAPE B : On copie les fichiers
       - name: Copy Config & automation files to VPS
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          # On copie tout ce dont on a besoin en une fois
+          # On copie tout ce dont on a besoin
           source: "docker-compose.yml,apps/automation/seed/,apps/automation/custom-node/,apps/automation/workflows/"
-          target: "~/apps/${{ vars.PROJECT_NAME }}"
-          # Supprime les fichiers existants dans la cible pour éviter les conflits
-          rm: true
+          target: "apps/${{ vars.PROJECT_NAME }}" # Pas de ~/ ici, le scp gère le chemin relatif au home
+          rm: false
 
       # --- 3. DÉPLOIEMENT SSH ---
       - name: Deploy to VPS
