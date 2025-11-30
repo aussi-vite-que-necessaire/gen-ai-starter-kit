@@ -17,10 +17,9 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Lowercase Repo Name
-        run: |
-          echo "REPO_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
+        run: echo "REPO_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
 
-      - name: Login to GitHub Container Registry
+      - name: Login to GHCR
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
@@ -30,15 +29,9 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      # --- 1. BUILD DES IMAGES ---
+      # --- 1. BUILD DES IMAGES (API, WEB, N8N) ---
 
-      - name: Pre-pull base images
-        run: |
-          for i in {1..3}; do
-            docker pull node:22-alpine && break || sleep 10
-          done
-
-      - name: Build and Push API
+      - name: Build API
         uses: docker/build-push-action@v4
         with:
           context: .
@@ -48,11 +41,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Create Web Env for Production
-        run: |
-          echo "VITE_API_URL=https://api.${{ vars.MAIN_DOMAIN }}" > ./apps/web/.env
-
-      - name: Build and Push Web
+      - name: Build Web
         uses: docker/build-push-action@v4
         with:
           context: .
@@ -62,34 +51,30 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # --- 2. TRANSFERT DE FICHIERS (SCP) ---
-      # ✅ OPTIMISATION : On envoie les fichiers de config directement via SSH
-      # ÉTAPE A : On nettoie le dossier via SSH (plus robuste que le rm du SCP)
-      - name: Clean Target Directory
-        uses: appleboy/ssh-action@master
+      # 👇 BUILD DU N8N CUSTOM (Plus propre que le curl au runtime)
+      - name: Build Custom N8N
+        uses: docker/build-push-action@v4
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            # On supprime le dossier de configuration existant pour éviter les conflits
-            # Note : Cela ne supprime PAS tes données (DB/N8N) car elles sont dans des volumes Docker nommés (/var/lib/docker/volumes)
-            rm -rf ~/apps/${{ vars.PROJECT_NAME }}
-            mkdir -p ~/apps/${{ vars.PROJECT_NAME }}
+          context: .
+          file: ./apps/automation/Dockerfile
+          push: true
+          tags: ghcr.io/${{ env.REPO_LOWER }}/n8n-custom:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      # ÉTAPE B : On copie les fichiers
-      - name: Copy Config & automation files to VPS
+      # --- 2. CONFIGURATION ---
+
+      - name: Copy Config to VPS
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          # On copie tout ce dont on a besoin
-          source: "docker-compose.yml,apps/automation/seed/,apps/automation/custom-node/,apps/automation/workflows/"
-          target: "apps/${{ vars.PROJECT_NAME }}" # Pas de ~/ ici, le scp gère le chemin relatif au home
-          rm: false
+          source: "docker-compose.yml,apps/automation/workflows/,apps/automation/seed/"
+          target: "apps/${{ vars.PROJECT_NAME }}"
 
-      # --- 3. DÉPLOIEMENT SSH ---
+      # --- 3. DÉPLOIEMENT & PROVISIONING DB ---
+
       - name: Deploy to VPS
         uses: appleboy/ssh-action@master
         with:
@@ -99,98 +84,118 @@ jobs:
           script: |
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # ✅ SÉCURITÉ : On ne supprime QUE les images orphelines (dangling)
-            # Ça ne touchera pas aux images de tes autres projets !
-            echo "🧹 Nettoyage léger des images..."
+            # Nettoyage léger des vieilles images (sans danger)
             docker image prune -f
 
-            cd ~/apps/${{ vars.PROJECT_NAME }}
+            # --- VARIABLES ---
+            # Nom des DBs basé sur le projet (ex: gen-ai-starter-kit_app)
+            # On remplace les tirets par des underscores pour SQL si besoin, mais postgres accepte les tirets si "quoted"
+            PROJECT_DB_APP="${{ vars.PROJECT_NAME }}_app"
+            PROJECT_DB_N8N="${{ vars.PROJECT_NAME }}_n8n"
+            # Un user dédié pour ce projet
+            DB_USER="${{ vars.PROJECT_NAME }}_user"
 
+            # --- PROVISIONING POSTGRES CENTRAL ---
+            # On utilise un client postgres éphémère pour parler au port 5432 localhost du VPS
+            echo "🐘 Provisioning Database on Central Postgres..."
+
+            docker run --rm --network host \
+              -e PGPASSWORD=${{ secrets.CENTRAL_DB_PASSWORD }} \
+              postgres:16-alpine \
+              psql -h 127.0.0.1 -U admin_postgres -d postgres -c "
+                /* 1. Création User du projet s'il n'existe pas */
+                DO \$\$ BEGIN
+                  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$DB_USER') THEN
+                    CREATE ROLE \"$DB_USER\" WITH LOGIN PASSWORD '${{ secrets.DB_PASSWORD }}';
+                  END IF;
+                END \$\$;
+                
+                /* 2. Création DB App */
+                SELECT 'CREATE DATABASE \"$PROJECT_DB_APP\" OWNER \"$DB_USER\"'
+                WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$PROJECT_DB_APP')\gexec
+                
+                /* 3. Création DB N8N */
+                SELECT 'CREATE DATABASE \"$PROJECT_DB_N8N\" OWNER \"$DB_USER\"'
+                WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$PROJECT_DB_N8N')\gexec
+              "
+
+            # --- SETUP DU PROJET ---
+            cd ~/apps/${{ vars.PROJECT_NAME }}
             REPO_LOWER="${{ env.REPO_LOWER }}"
 
-            # --- ENV ---
-            echo "🔧 Génération du fichier .env..."
+            echo "🔧 Génération .env..."
             cat <<EOF > .env
-            # --- DOCKER ---
+            # Images
             IMAGE_NAME_API=ghcr.io/$REPO_LOWER/api:latest
             IMAGE_NAME_WEB=ghcr.io/$REPO_LOWER/web:latest
-            PROJECT_NAME=${{ vars.PROJECT_NAME }}
-            ENV_TYPE=production
+            IMAGE_NAME_N8N=ghcr.io/$REPO_LOWER/n8n-custom:latest
 
-            # --- TRAEFIK ---
+            # DB Centralisée
+            POSTGRES_USER=$DB_USER
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            POSTGRES_DB=$PROJECT_DB_APP
+            POSTGRES_DB_N8N=$PROJECT_DB_N8N
+
+            # Config App
+            PROJECT_NAME=${{ vars.PROJECT_NAME }}
+            NODE_ENV=production
+            PORT=3000
+
+            # URLs
             DOMAIN_NAME_WEB=${{ vars.MAIN_DOMAIN }}
             DOMAIN_NAME_API=api.${{ vars.MAIN_DOMAIN }}
             DOMAIN_NAME_N8N=n8n.${{ vars.MAIN_DOMAIN }}
-
-            # --- SECRETS & N8N ---
+            FRONTEND_URL=https://${{ vars.MAIN_DOMAIN }}
             N8N_URL=https://n8n.${{ vars.MAIN_DOMAIN }}
+            BETTER_AUTH_URL=https://api.${{ vars.MAIN_DOMAIN }}
+
+            # Secrets
             INTERNAL_API_SECRET=${{ secrets.INTERNAL_API_SECRET }}
             N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}
 
-            # --- API CONFIG ---
-            NODE_ENV=production
-            PORT=3000
-            FRONTEND_URL=https://${{ vars.MAIN_DOMAIN }}
-
-            # --- DB & REDIS ---
-            DATABASE_URL=postgresql://app_user:${{ secrets.DB_PASSWORD }}@db:5432/webapp
+            # Redis (Local au projet)
             REDIS_HOST=redis
             REDIS_PORT=6379
-
-            # --- AUTH ---
-            BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}
-            BETTER_AUTH_URL=https://api.${{ vars.MAIN_DOMAIN }}
-
-            # --- INFRA ---
-            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-            POSTGRES_USER=app_user
-            POSTGRES_DB=webapp
             EOF
-
             chmod 600 .env
 
-            # --- SÉQUENCE DE DÉMARRAGE ---
-
-            echo "📥 Pulling images..."
+            # --- START ---
+            echo "📥 Pull & Start..."
             docker compose pull
-
-            echo "🚀 Démarrage DB & Redis..."
-            docker compose up -d db redis
-
-            echo "⏳ Attente disponibilité DB..."
-            until docker compose exec -T db pg_isready -U app_user -d webapp; do sleep 2; done
-
-            echo "🛠 Création base n8n (si inexistante)..."
-            docker compose exec -T db psql -U app_user -d webapp -c "CREATE DATABASE n8n;" || echo "Database n8n already exists"
-
-            echo "💉 Vérification Seed Admin n8n..."
-            # On utilise le fichier qu'on a envoyé via SCP
-            if ! docker compose exec -T db psql -U app_user -d n8n -c 'SELECT 1 FROM "user" LIMIT 1;' > /dev/null 2>&1; then
-                echo "📭 Base n8n vide. Injection du Seed..."
-                # Le fichier est dans apps/automation/seed/ grâce au SCP
-                docker compose cp apps/automation/seed/init-n8n.sql db:/tmp/init-n8n.sql
-                docker compose exec -T db psql -U app_user -d n8n -f /tmp/init-n8n.sql
-            else
-                echo "✅ Base n8n déjà initialisée. Skip seed."
-            fi
-
-            echo "📦 Migrations API..."
-            docker compose run --rm api npm run db:migrate || {
-              echo "❌ ERREUR MIGRATIONS"
-              exit 1
-            }
-
-            echo "🚀 Démarrage Final..."
             docker compose up -d --remove-orphans
 
-            echo "⏳ Attente démarrage n8n..."
-            sleep 10
+            # --- SEEDS (Premier déploiement uniquement) ---
+            # On vérifie si la table user n8n est vide sur la DB centralisée
+            echo "💉 Vérification Seed N8N..."
 
-            echo "📥 Import des workflows et credentials n8n..."
+            # On utilise le conteneur API (qui a le client pg et les droits) pour checker/seeder
+            # Ou on utilise docker run psql temporaire. Utilisons le conteneur n8n lui-même c'est plus simple.
+            # Attends, n8n n'a pas psql. Utilisons l'image postgres alpine temporaire connectée au réseau.
 
-            # ✅ OPTIMISATION : On utilise les fichiers locaux transférés par SCP
-            # Plus de git clone ici !
+            docker run --rm --network web_network \
+              -v $(pwd)/apps/automation/seed/init-n8n.sql:/tmp/init-n8n.sql \
+              -e PGPASSWORD=${{ secrets.DB_PASSWORD }} \
+              postgres:16-alpine \
+              bash -c "
+                # Test si la table existe
+                if ! psql -h postgres-central -U $DB_USER -d $PROJECT_DB_N8N -c 'SELECT 1 FROM \"user\" LIMIT 1;' > /dev/null 2>&1; then
+                   echo '📭 Base n8n vide. Injection du Seed...'
+                   psql -h postgres-central -U $DB_USER -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql
+                else
+                   echo '✅ Base n8n déjà initialisée.'
+                fi
+              "
+
+            # --- MIGRATIONS APP ---
+            echo "📦 Migrations API..."
+            docker compose run --rm api npm run db:migrate
+
+            # --- IMPORT WORKFLOWS ---
+            echo "📥 Import N8N Workflows..."
+            # On attend un peu que n8n soit up
+            sleep 15
 
             WORKFLOWS_DIR="apps/automation/workflows"
 
@@ -200,7 +205,7 @@ jobs:
               docker compose exec -u node -T n8n n8n import:credentials --input=/tmp/credentials.json || echo "⚠️ Credentials import failed"
             fi
 
-            # Import tous les workflows
+            # Import workflows
             for file in "$WORKFLOWS_DIR"/*.json; do
               filename=$(basename "$file")
               if [ "$filename" != "credentials.json" ]; then
@@ -209,10 +214,8 @@ jobs:
               fi
             done
 
-            echo "🔌 Activation des workflows..."
-            docker compose exec -u node -T n8n n8n update:workflow --all --active=true || echo "⚠️ Workflow activation failed"
-
-            echo "🔄 Restart n8n pour activer les webhooks..."
+            # Activation & Restart
+            docker compose exec -u node -T n8n n8n update:workflow --all --active=true
             docker compose restart n8n
 
-            echo "✅ Déploiement terminé sur https://${{ vars.MAIN_DOMAIN }}"
+            echo "✅ Déploiement terminé !"

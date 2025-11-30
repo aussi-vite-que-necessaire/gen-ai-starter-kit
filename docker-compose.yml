@@ -46,43 +46,11 @@ services:
       - "traefik.http.routers.${PROJECT_NAME}-web.tls.certresolver=myresolver"
       - "traefik.http.services.${PROJECT_NAME}-web.loadbalancer.server.port=80"
 
-  # --- INFRA ---
-  db:
-    image: postgres:15-alpine
-    restart: always
-    networks:
-      - default
-    environment:
-      - POSTGRES_USER=app_user
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_DB=webapp # ✅ CORRIGÉ (C'était mydb)
-    volumes:
-      - db_data:/var/lib/postgresql/data
-      # ✅ CRITIQUE : Le script qui crée la base 'n8n' doit être là aussi !
-      - ./apps/automation/seed/create-databases.sql:/docker-entrypoint-initdb.d/create-databases.sql
-      # Le script User Admin (optionnel, selon si tu l'as gardé ou non)
-      - ./apps/automation/seed/init-n8n.sql:/docker-entrypoint-initdb.d/init-n8n.sql
-
   redis:
     image: redis:7-alpine
     restart: always
     networks:
       - default
-
-  db-backup:
-    image: prodrigestivill/postgres-backup-local
-    restart: always
-    networks:
-      - default
-    environment:
-      - POSTGRES_HOST=db
-      - POSTGRES_DB=webapp # ✅ CORRIGÉ
-      - POSTGRES_USER=app_user
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - SCHEDULE=@daily
-      - BACKUP_KEEP_DAYS=7
-    volumes:
-      - ./backups:/backups
 
   mailpit:
     image: axllent/mailpit
