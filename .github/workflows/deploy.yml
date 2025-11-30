@@ -29,7 +29,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      # --- 1. BUILD ---
+      # --- 1. BUILD DES IMAGES ---
       - name: Build API
         uses: docker/build-push-action@v4
         with:
@@ -60,7 +60,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # --- 2. CONFIGURATION ---
+      # --- 2. ENVOI DES FICHIERS DE CONFIG ---
       - name: Copy Config to VPS
         uses: appleboy/scp-action@master
         with:
@@ -70,69 +70,83 @@ jobs:
           source: "docker-compose.yml,apps/automation/workflows/,apps/automation/seed/"
           target: "apps/${{ vars.PROJECT_NAME }}"
 
-      # --- 3. DÉPLOIEMENT ---
+      # --- 3. DÉPLOIEMENT SUR LE VPS ---
       - name: Deploy to VPS
         uses: appleboy/ssh-action@master
-
         env:
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }} # Déballage du secret ici
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          # On passe DB_PASSWORD (le mot de passe admin)
           envs: DB_PASSWORD
           script: |
+            # --- INITIALISATION ---
             export DB_PASSWORD=$DB_PASSWORD
 
+            # Login Docker
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker image prune -f
 
-            # --- DEFINITION DES NOMS ---
-            # On normalise les noms de bases de données
+            # Définition des noms de DB
             PROJECT_DB_APP="${{ vars.PROJECT_NAME }}_app"
             PROJECT_DB_N8N="${{ vars.PROJECT_NAME }}_n8n"
 
-            # --- OVERRIDE DATABASE_URL ---
-            # On construit l'URL ici pour être sûr qu'elle pointe vers la bonne DB avec le compte Admin
+            # Construction de l'URL pour l'API (avec le user Admin)
             export DATABASE_URL="postgresql://admin_postgres:$DB_PASSWORD@postgres-central:5432/$PROJECT_DB_APP?schema=public"
 
-            # --- PROVISIONING DE LA MORT (Version Robuste) ---
+            # Aller dans le dossier du projet
+            cd ~/apps/${{ vars.PROJECT_NAME }}
+
+            # --- ETAPE A : CRÉATION DES BASES (si absentes) ---
             echo "🐘 Provisioning Database on Central Postgres..."
-
-            # On utilise l'image postgres pour lancer la commande 'createdb'
-            # C'est beaucoup plus fiable que d'essayer d'injecter du SQL
-            # Le "|| true" permet de ne pas planter si la base existe déjà
-
             docker run --rm --network web_network \
               -e PGPASSWORD=$DB_PASSWORD \
               postgres:16-alpine \
               sh -c "
-                echo 'Tentative de création de la base APP : $PROJECT_DB_APP'
-                createdb -h postgres-central -U admin_postgres $PROJECT_DB_APP || echo '⚠️ La base App existe déjà (ou erreur mineure)'
-
-                echo 'Tentative de création de la base N8N : $PROJECT_DB_N8N'
-                createdb -h postgres-central -U admin_postgres $PROJECT_DB_N8N || echo '⚠️ La base N8N existe déjà (ou erreur mineure)'
+                createdb -h postgres-central -U admin_postgres $PROJECT_DB_APP || true
+                createdb -h postgres-central -U admin_postgres $PROJECT_DB_N8N || true
               "
 
+            # --- ETAPE B : SEED N8N (CRUCIAL : AVANT LE START !) ---
+            echo "💉 Préparation Seed N8N..."
 
-            # --- SETUP ENV ---
-            cd ~/apps/${{ vars.PROJECT_NAME }}
+            # 1. On arrête N8N pour être sûr qu'il ne crée pas de tables vides
+            docker compose stop n8n || true
+
+            # 2. On remplace 'app_user' par 'admin_postgres' dans le fichier SQL
+            sed -i 's/app_user/admin_postgres/g' apps/automation/seed/init-n8n.sql
+
+            # 3. Injection du Seed
+            docker run --rm --network web_network \
+              -v $(pwd)/apps/automation/seed/init-n8n.sql:/tmp/init-n8n.sql \
+              -e PGPASSWORD=$DB_PASSWORD \
+              postgres:16-alpine \
+              bash -c "
+                # On compte les users. Si 0 ou erreur, on injecte.
+                COUNT=\$(psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -tAc 'SELECT COUNT(*) FROM \"user\"' 2>/dev/null || echo 0)
+                
+                if [ \"\$COUNT\" = \"0\" ]; then
+                   echo '📭 Base N8N vide. Injection du seed...'
+                   psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql || echo '⚠️ Erreurs SQL ignorées'
+                else
+                   echo '✅ Base N8N déjà peuplée.'
+                fi
+              "
+
+            # --- ETAPE C : GÉNÉRATION .ENV ---
+            echo "🔧 Génération .env..."
             REPO_LOWER="${{ env.REPO_LOWER }}"
 
-            echo "🔧 Génération .env..."
             cat <<EOF > .env
             # Images
             IMAGE_NAME_API=ghcr.io/$REPO_LOWER/api:latest
             IMAGE_NAME_WEB=ghcr.io/$REPO_LOWER/web:latest
             IMAGE_NAME_N8N=ghcr.io/$REPO_LOWER/n8n-custom:latest
 
-            # DB Config (On utilise l'Admin partout pour simplifier)
+            # DB Config (Admin partout)
             POSTGRES_USER=admin_postgres
             DB_PASSWORD=$DB_PASSWORD
-
-            # Noms dynamiques des bases
             POSTGRES_DB_APP=$PROJECT_DB_APP
             POSTGRES_DB_N8N=$PROJECT_DB_N8N
 
@@ -153,6 +167,7 @@ jobs:
             DATABASE_URL=$DATABASE_URL
             INTERNAL_API_SECRET=${{ secrets.INTERNAL_API_SECRET }}
             N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
             BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}
 
             # Redis
@@ -161,42 +176,27 @@ jobs:
             EOF
             chmod 600 .env
 
-            # --- START ---
+            # --- ETAPE D : DÉMARRAGE ---
             echo "📥 Pull & Start..."
             docker compose pull
             docker compose up -d --remove-orphans
 
-            # --- SEED N8N ---
-            echo "💉 Vérification Seed N8N..."
-            docker run --rm --network web_network \
-              -v $(pwd)/apps/automation/seed/init-n8n.sql:/tmp/init-n8n.sql \
-              -e PGPASSWORD=$DB_PASSWORD \
-              postgres:16-alpine \
-              bash -c "
-                # On teste si la table user existe
-                if ! psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -c 'SELECT 1 FROM \"user\" LIMIT 1;' > /dev/null 2>&1; then
-                   echo '📭 Base n8n vide. Injection du Seed...'
-                   psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql
-                else
-                   echo '✅ Base n8n déjà initialisée.'
-                fi
-              "
-
-            # --- MIGRATIONS API ---
+            # --- ETAPE E : POST-DEPLOY (Migrations & Imports) ---
             echo "📦 Migrations API..."
-            # On passe explicitement la DATABASE_URL à la commande
             docker compose run --rm -e DATABASE_URL=$DATABASE_URL api npm run db:migrate
 
-            # --- IMPORT WORKFLOWS ---
             echo "📥 Import N8N Workflows..."
-            sleep 15
+            sleep 15 # Attente démarrage N8N
+
             WORKFLOWS_DIR="apps/automation/workflows"
 
+            # Credentials
             if [ -f "$WORKFLOWS_DIR/credentials.json" ]; then
               docker compose cp "$WORKFLOWS_DIR/credentials.json" n8n:/tmp/credentials.json
               docker compose exec -u node -T n8n n8n import:credentials --input=/tmp/credentials.json || echo "⚠️ Credentials import failed"
             fi
 
+            # Workflows
             for file in "$WORKFLOWS_DIR"/*.json; do
               filename=$(basename "$file")
               if [ "$filename" != "credentials.json" ]; then
@@ -205,6 +205,7 @@ jobs:
               fi
             done
 
+            # Activation
             docker compose exec -u node -T n8n n8n update:workflow --all --active=true
             docker compose restart n8n
 
