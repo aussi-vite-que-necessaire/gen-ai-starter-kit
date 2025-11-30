@@ -5,7 +5,7 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
-  # --- JOB 1 : BUILD IMAGES (PARALLÈLE) ---
+  # --- JOB 1 : CONSTRUCTION DES IMAGES DOCKER (PARALLÈLE) ---
   build-images:
     runs-on: ubuntu-latest
     strategy:
@@ -21,7 +21,7 @@ jobs:
       - name: Lowercase Repo Name
         run: echo "REPO_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
 
-      # Calcul des URLs pour le frontend (Vite needs it at build time)
+      # Calcul des URLs pour le frontend (nécessaire au build time pour Vite)
       - name: Calculate URLs
         id: urls
         run: echo "API_URL=https://api-pr-${{ github.event.number }}.${{ vars.MAIN_DOMAIN }}" >> $GITHUB_OUTPUT
@@ -37,9 +37,10 @@ jobs:
         uses: docker/setup-buildx-action@v2
 
       # Injection de l'URL API dans le build Web
-      - name: Create Web Env
+      - name: Create Web Env for Preview
         if: matrix.service == 'web'
-        run: echo "VITE_API_URL=${{ steps.urls.outputs.API_URL }}" > ./apps/web/.env
+        run: |
+          echo "VITE_API_URL=${{ steps.urls.outputs.API_URL }}" > ./apps/web/.env
 
       - name: Build and Push ${{ matrix.service }}
         uses: docker/build-push-action@v4
@@ -52,37 +53,46 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.service }}-pr
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}-pr
 
-  # --- JOB 2 : BUILD N8N CUSTOM NODE ---
+  # --- JOB 2 : COMPILATION DU CUSTOM NODE (PARALLÈLE) ---
+  # On le sort du deploy pour qu'il tourne PENDANT que les images se construisent
   build-n8n-node:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v3
+
       - name: Setup Node
         uses: actions/setup-node@v3
         with:
           node-version: 18
           cache: "npm"
           cache-dependency-path: apps/automation/custom-node/package-lock.json
-      - name: Build
+
+      - name: Build Custom Node
         run: |
           cd apps/automation/custom-node
           npm ci
           npm run build
+          # On nettoie pour ne garder que la prod
           rm -rf node_modules
           npm ci --omit=dev
-      - name: Upload Artifact
+
+      # On sauvegarde le résultat compilé pour le job suivant
+      - name: Upload Custom Node Artifact
         uses: actions/upload-artifact@v4
         with:
           name: n8n-custom-node
           path: apps/automation/custom-node/
           retention-days: 1
 
-  # --- JOB 3 : DÉPLOIEMENT ---
+  # --- JOB 3 : DÉPLOIEMENT (Le chef d'orchestre) ---
   deploy-preview:
     needs: [build-images, build-n8n-node]
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -99,15 +109,15 @@ jobs:
           echo "API_URL=https://api-pr-${{ github.event.number }}.${{ vars.MAIN_DOMAIN }}" >> $GITHUB_OUTPUT
           echo "N8N_URL=https://n8n-pr-${{ github.event.number }}.${{ vars.MAIN_DOMAIN }}" >> $GITHUB_OUTPUT
 
-      # Récupération de l'artefact N8N
-      - name: Download Custom Node
+      # On récupère le custom node compilé par le job précédent
+      - name: Download Custom Node Artifact
         uses: actions/download-artifact@v4
         with:
           name: n8n-custom-node
           path: apps/automation/custom-node
 
-      # Nettoyage dossier distant
-      - name: Clean Remote Directory
+      # --- NETTOYAGE ---
+      - name: Force Clean Remote Directory
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -117,10 +127,9 @@ jobs:
             FOLDER="${{ steps.config.outputs.FOLDER_NAME }}"
             mkdir -p apps/$FOLDER
             cd apps/$FOLDER
-            # Nettoyage propre via docker alpine
             docker run --rm -v "$(pwd):/clean" alpine rm -rf /clean/apps/automation
 
-      # Transfert fichiers
+      # --- ENVOI ---
       - name: Copy Config to VPS
         uses: appleboy/scp-action@master
         with:
@@ -130,7 +139,7 @@ jobs:
           source: "docker-compose.yml,apps/automation/"
           target: "apps/${{ steps.config.outputs.FOLDER_NAME }}"
 
-      # SSH Déploiement
+      # --- SSH & SEED ---
       - name: Deploy to VPS
         uses: appleboy/ssh-action@master
         env:
@@ -143,29 +152,25 @@ jobs:
           script: |
             export DB_PASSWORD=$DB_PASSWORD
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker image prune -f
 
             # --- VARIABLES ---
             PR_TAG="${{ steps.config.outputs.PR_ID }}"
             FOLDER="${{ steps.config.outputs.FOLDER_NAME }}"
 
-            # Noms de DB uniques par PR
-            # ex: gen_ai_starter_kit_pr_12_app
-            # On remplace les tirets par des underscores pour être SQL compliant
+            # Noms de DB uniques par PR (remplacement des tirets par underscores pour SQL)
             SAFE_PR_ID=$(echo "$PR_TAG" | tr '-' '_')
             SAFE_PROJECT_NAME=$(echo "${{ vars.PROJECT_NAME }}" | tr '-' '_')
-
             PROJECT_DB_APP="${SAFE_PROJECT_NAME}_${SAFE_PR_ID}_app"
             PROJECT_DB_N8N="${SAFE_PROJECT_NAME}_${SAFE_PR_ID}_n8n"
-
-            # URL de connexion
             export DATABASE_URL="postgresql://admin_postgres:$DB_PASSWORD@postgres-central:5432/$PROJECT_DB_APP?schema=public"
 
             cd ~/apps/$FOLDER
 
-            # --- A. PROVISIONING DB (CENTRAL) ---
-            echo "🐘 Provisioning Database for PR..."
+            # --- A. BASES ---
+            echo "🐘 Provisioning Database..."
             docker run --rm --network web_network \
-              -e PGPASSWORD=${{ secrets.CENTRAL_DB_PASSWORD }} \
+              -e PGPASSWORD=$DB_PASSWORD \
               postgres:16-alpine \
               sh -c "
                 createdb -h postgres-central -U admin_postgres $PROJECT_DB_APP || true
@@ -177,33 +182,23 @@ jobs:
             REPO_LOWER="${{ env.REPO_LOWER }}"
 
             cat <<EOF > .env
-            # Images taggées par PR
             IMAGE_NAME_API=ghcr.io/$REPO_LOWER/api:$PR_TAG
             IMAGE_NAME_WEB=ghcr.io/$REPO_LOWER/web:$PR_TAG
             IMAGE_NAME_N8N=n8nio/n8n:latest 
-
-            # Config DB PR
             POSTGRES_USER=admin_postgres
             DB_PASSWORD=$DB_PASSWORD
             POSTGRES_DB_APP=$PROJECT_DB_APP
             POSTGRES_DB_N8N=$PROJECT_DB_N8N
-
-            # Config App PR
             PROJECT_NAME=$FOLDER
             NODE_ENV=production
             PORT=3000
-
-            # URLs PR
             DOMAIN_NAME_WEB=${{ steps.config.outputs.PR_ID }}.${{ vars.MAIN_DOMAIN }}
             DOMAIN_NAME_API=api-${{ steps.config.outputs.PR_ID }}.${{ vars.MAIN_DOMAIN }}
             DOMAIN_NAME_N8N=n8n-${{ steps.config.outputs.PR_ID }}.${{ vars.MAIN_DOMAIN }}
-
             FRONTEND_URL=${{ steps.config.outputs.WEB_URL }}
             N8N_URL=${{ steps.config.outputs.N8N_URL }}
             BETTER_AUTH_URL=${{ steps.config.outputs.API_URL }}
             DATABASE_URL=$DATABASE_URL
-
-            # Secrets
             INTERNAL_API_SECRET=${{ secrets.INTERNAL_API_SECRET }}
             N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
@@ -214,13 +209,11 @@ jobs:
             chmod 600 .env
 
             # --- C. START ---
-            echo "🚀 Start Project $FOLDER..."
-
-            # Important : Le nom du projet (-p) permet d'isoler les conteneurs de cette PR
+            echo "📥 Pull & Start..."
             docker compose -p $FOLDER pull
             docker compose -p $FOLDER up -d --remove-orphans
 
-            # --- D. N8N DEPS ---
+            # --- D. N8N DEPS (Installation dépendances custom nodes) ---
             echo "📦 Installation dépendances N8N..."
             docker run --rm \
               -v $(pwd)/apps/automation/custom-node:/app \
@@ -244,10 +237,6 @@ jobs:
             echo "📥 Import N8N Workflows..."
             WORKFLOWS_DIR="apps/automation/workflows"
 
-            # Attente N8N ready (Healthcheck) pour éviter race condition
-            docker run --rm --network web_network curlimages/curl:latest \
-              sh -c 'until curl -s -f http://'$FOLDER'-n8n-1:5678/healthz > /dev/null; do sleep 3; done'
-
             if [ -f "$WORKFLOWS_DIR/credentials.json" ]; then
               docker compose -p $FOLDER cp "$WORKFLOWS_DIR/credentials.json" n8n:/tmp/credentials.json
               docker compose -p $FOLDER exec -u node -T n8n n8n import:credentials --input=/tmp/credentials.json || true
@@ -262,10 +251,9 @@ jobs:
             done
 
             docker compose -p $FOLDER exec -u node -T n8n n8n update:workflow --all --active=true
+            docker compose -p $FOLDER restart n8n
 
-            # On ne redémarre pas N8N ici, les workflows sont actifs à chaud ou au prochain trigger
-
-            echo "✅ Preview Déployée !"
+            echo "✅ Déploiement terminé !"
 
       - name: Comment PR URL
         uses: thollander/actions-comment-pull-request@v2
