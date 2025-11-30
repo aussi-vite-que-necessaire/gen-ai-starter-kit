@@ -29,8 +29,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      # --- 1. BUILD DES IMAGES (API, WEB, N8N) ---
-
+      # --- 1. BUILD ---
       - name: Build API
         uses: docker/build-push-action@v4
         with:
@@ -51,7 +50,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # 👇 BUILD DU N8N CUSTOM (Plus propre que le curl au runtime)
       - name: Build Custom N8N
         uses: docker/build-push-action@v4
         with:
@@ -63,7 +61,6 @@ jobs:
           cache-to: type=gha,mode=max
 
       # --- 2. CONFIGURATION ---
-
       - name: Copy Config to VPS
         uses: appleboy/scp-action@master
         with:
@@ -73,53 +70,47 @@ jobs:
           source: "docker-compose.yml,apps/automation/workflows/,apps/automation/seed/"
           target: "apps/${{ vars.PROJECT_NAME }}"
 
-      # --- 3. DÉPLOIEMENT & PROVISIONING DB ---
-
+      # --- 3. DÉPLOIEMENT ---
       - name: Deploy to VPS
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          # On passe DB_PASSWORD (le mot de passe admin)
+          envs: DB_PASSWORD
           script: |
-            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            export DB_PASSWORD=$DB_PASSWORD
 
-            # Nettoyage léger des vieilles images (sans danger)
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker image prune -f
 
-            # --- VARIABLES ---
-            # Nom des DBs basé sur le projet (ex: gen-ai-starter-kit_app)
-            # On remplace les tirets par des underscores pour SQL si besoin, mais postgres accepte les tirets si "quoted"
+            # --- DEFINITION DES NOMS ---
+            # On normalise les noms de bases de données
             PROJECT_DB_APP="${{ vars.PROJECT_NAME }}_app"
             PROJECT_DB_N8N="${{ vars.PROJECT_NAME }}_n8n"
-            # Un user dédié pour ce projet
-            DB_USER="${{ vars.PROJECT_NAME }}_user"
 
-            # --- PROVISIONING POSTGRES CENTRAL ---
-            # On utilise un client postgres éphémère pour parler au port 5432 localhost du VPS
+            # --- OVERRIDE DATABASE_URL ---
+            # On construit l'URL ici pour être sûr qu'elle pointe vers la bonne DB avec le compte Admin
+            export DATABASE_URL="postgresql://admin_postgres:$DB_PASSWORD@postgres-central:5432/$PROJECT_DB_APP?schema=public"
+
+            # --- PROVISIONING SQL ---
             echo "🐘 Provisioning Database on Central Postgres..."
-
+            # On utilise admin_postgres pour créer les bases si elles manquent
             docker run --rm --network host \
-              -e PGPASSWORD=${{ secrets.CENTRAL_DB_PASSWORD }} \
+              -e PGPASSWORD=$DB_PASSWORD \
               postgres:16-alpine \
               psql -h 127.0.0.1 -U admin_postgres -d postgres -c "
-                /* 1. Création User du projet s'il n'existe pas */
-                DO \$\$ BEGIN
-                  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$DB_USER') THEN
-                    CREATE ROLE \"$DB_USER\" WITH LOGIN PASSWORD '${{ secrets.DB_PASSWORD }}';
-                  END IF;
-                END \$\$;
-                
-                /* 2. Création DB App */
-                SELECT 'CREATE DATABASE \"$PROJECT_DB_APP\" OWNER \"$DB_USER\"'
+                /* Création DB App */
+                SELECT 'CREATE DATABASE \"$PROJECT_DB_APP\" OWNER \"admin_postgres\"'
                 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$PROJECT_DB_APP')\gexec
                 
-                /* 3. Création DB N8N */
-                SELECT 'CREATE DATABASE \"$PROJECT_DB_N8N\" OWNER \"$DB_USER\"'
+                /* Création DB N8N */
+                SELECT 'CREATE DATABASE \"$PROJECT_DB_N8N\" OWNER \"admin_postgres\"'
                 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$PROJECT_DB_N8N')\gexec
               "
 
-            # --- SETUP DU PROJET ---
+            # --- SETUP ENV ---
             cd ~/apps/${{ vars.PROJECT_NAME }}
             REPO_LOWER="${{ env.REPO_LOWER }}"
 
@@ -130,13 +121,15 @@ jobs:
             IMAGE_NAME_WEB=ghcr.io/$REPO_LOWER/web:latest
             IMAGE_NAME_N8N=ghcr.io/$REPO_LOWER/n8n-custom:latest
 
-            # DB Centralisée
-            POSTGRES_USER=$DB_USER
-            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-            POSTGRES_DB=$PROJECT_DB_APP
+            # DB Config (On utilise l'Admin partout pour simplifier)
+            POSTGRES_USER=admin_postgres
+            DB_PASSWORD=$DB_PASSWORD
+
+            # Noms dynamiques des bases
+            POSTGRES_DB_APP=$PROJECT_DB_APP
             POSTGRES_DB_N8N=$PROJECT_DB_N8N
 
-            # Config App
+            # App Config
             PROJECT_NAME=${{ vars.PROJECT_NAME }}
             NODE_ENV=production
             PORT=3000
@@ -150,12 +143,13 @@ jobs:
             BETTER_AUTH_URL=https://api.${{ vars.MAIN_DOMAIN }}
 
             # Secrets
+            DATABASE_URL=$DATABASE_URL
             INTERNAL_API_SECRET=${{ secrets.INTERNAL_API_SECRET }}
             N8N_ENCRYPTION_KEY=${{ secrets.N8N_ENCRYPTION_KEY }}
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
             BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}
 
-            # Redis (Local au projet)
+            # Redis
             REDIS_HOST=redis
             REDIS_PORT=6379
             EOF
@@ -166,46 +160,37 @@ jobs:
             docker compose pull
             docker compose up -d --remove-orphans
 
-            # --- SEEDS (Premier déploiement uniquement) ---
-            # On vérifie si la table user n8n est vide sur la DB centralisée
+            # --- SEED N8N ---
             echo "💉 Vérification Seed N8N..."
-
-            # On utilise le conteneur API (qui a le client pg et les droits) pour checker/seeder
-            # Ou on utilise docker run psql temporaire. Utilisons le conteneur n8n lui-même c'est plus simple.
-            # Attends, n8n n'a pas psql. Utilisons l'image postgres alpine temporaire connectée au réseau.
-
             docker run --rm --network web_network \
               -v $(pwd)/apps/automation/seed/init-n8n.sql:/tmp/init-n8n.sql \
-              -e PGPASSWORD=${{ secrets.DB_PASSWORD }} \
+              -e PGPASSWORD=$DB_PASSWORD \
               postgres:16-alpine \
               bash -c "
-                # Test si la table existe
-                if ! psql -h postgres-central -U $DB_USER -d $PROJECT_DB_N8N -c 'SELECT 1 FROM \"user\" LIMIT 1;' > /dev/null 2>&1; then
+                # On teste si la table user existe
+                if ! psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -c 'SELECT 1 FROM \"user\" LIMIT 1;' > /dev/null 2>&1; then
                    echo '📭 Base n8n vide. Injection du Seed...'
-                   psql -h postgres-central -U $DB_USER -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql
+                   psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql
                 else
                    echo '✅ Base n8n déjà initialisée.'
                 fi
               "
 
-            # --- MIGRATIONS APP ---
+            # --- MIGRATIONS API ---
             echo "📦 Migrations API..."
-            docker compose run --rm api npm run db:migrate
+            # On passe explicitement la DATABASE_URL à la commande
+            docker compose run --rm -e DATABASE_URL=$DATABASE_URL api npm run db:migrate
 
             # --- IMPORT WORKFLOWS ---
             echo "📥 Import N8N Workflows..."
-            # On attend un peu que n8n soit up
             sleep 15
-
             WORKFLOWS_DIR="apps/automation/workflows"
 
-            # Import credentials
             if [ -f "$WORKFLOWS_DIR/credentials.json" ]; then
               docker compose cp "$WORKFLOWS_DIR/credentials.json" n8n:/tmp/credentials.json
               docker compose exec -u node -T n8n n8n import:credentials --input=/tmp/credentials.json || echo "⚠️ Credentials import failed"
             fi
 
-            # Import workflows
             for file in "$WORKFLOWS_DIR"/*.json; do
               filename=$(basename "$file")
               if [ "$filename" != "credentials.json" ]; then
@@ -214,7 +199,6 @@ jobs:
               fi
             done
 
-            # Activation & Restart
             docker compose exec -u node -T n8n n8n update:workflow --all --active=true
             docker compose restart n8n
 
