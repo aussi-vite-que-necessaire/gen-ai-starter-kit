@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [api, web] # On lance deux jobs en parallèle : un pour 'api', un pour 'web'
+        service: [api, web]
     permissions:
       contents: read
       packages: write
@@ -37,14 +37,45 @@ jobs:
           context: .
           file: ./apps/${{ matrix.service }}/Dockerfile
           push: true
-          # Le tag s'adapte automatiquement : .../api:latest ou .../web:latest
           tags: ghcr.io/${{ env.REPO_LOWER }}/${{ matrix.service }}:latest
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
-  # --- JOB 2 : DÉPLOIEMENT (Attend que les images soient prêtes) ---
+  # --- JOB 2 : COMPILATION DU CUSTOM NODE (PARALLÈLE) ---
+  # On le sort du deploy pour qu'il tourne PENDANT que les images se construisent
+  build-n8n-node:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: "npm"
+          cache-dependency-path: apps/automation/custom-node/package-lock.json
+
+      - name: Build Custom Node
+        run: |
+          cd apps/automation/custom-node
+          npm ci
+          npm run build
+          # On nettoie pour ne garder que la prod
+          rm -rf node_modules
+          npm ci --omit=dev
+
+      # On sauvegarde le résultat compilé pour le job suivant
+      - name: Upload Custom Node Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: n8n-custom-node
+          path: apps/automation/custom-node/
+          retention-days: 1
+
+  # --- JOB 3 : DÉPLOIEMENT (Le chef d'orchestre) ---
   deploy:
-    needs: build-images # 👈 C'est ici que se fait la synchro
+    needs: [build-images, build-n8n-node] # 👈 Attend que TOUT soit prêt
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -54,18 +85,14 @@ jobs:
       - name: Lowercase Repo Name
         run: echo "REPO_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
 
-      # --- PRÉPARATION LOCALE ---
+      # On récupère le custom node compilé par le job précédent
+      - name: Download Custom Node Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: n8n-custom-node
+          path: apps/automation/custom-node
 
-      # On build le node JS localement (c'est très rapide, pas besoin d'un job à part)
-      - name: Build Custom Node
-        run: |
-          cd apps/automation/custom-node
-          npm install
-          npm run build
-          rm -rf node_modules
-          npm ci --omit=dev
-
-      # --- NETTOYAGE DISTANT ---
+      # --- NETTOYAGE ---
       - name: Force Clean Remote Directory
         uses: appleboy/ssh-action@master
         with:
@@ -77,7 +104,7 @@ jobs:
             cd apps/${{ vars.PROJECT_NAME }}
             docker run --rm -v "$(pwd):/clean" alpine rm -rf /clean/apps/automation
 
-      # --- ENVOI FICHIERS ---
+      # --- ENVOI ---
       - name: Copy Config to VPS
         uses: appleboy/scp-action@master
         with:
@@ -87,7 +114,7 @@ jobs:
           source: "docker-compose.yml,apps/automation/"
           target: "apps/${{ vars.PROJECT_NAME }}"
 
-      # --- DÉPLOIEMENT SSH ---
+      # --- SSH & SEED ---
       - name: Deploy to VPS
         uses: appleboy/ssh-action@master
         env:
@@ -99,7 +126,6 @@ jobs:
           envs: DB_PASSWORD
           script: |
             export DB_PASSWORD=$DB_PASSWORD
-
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker image prune -f
 
@@ -109,7 +135,7 @@ jobs:
 
             cd ~/apps/${{ vars.PROJECT_NAME }}
 
-            # --- ETAPE A : CRÉATION DES BASES ---
+            # --- A. BASES ---
             echo "🐘 Provisioning Database..."
             docker run --rm --network web_network \
               -e PGPASSWORD=$DB_PASSWORD \
@@ -119,10 +145,9 @@ jobs:
                 createdb -h postgres-central -U admin_postgres $PROJECT_DB_N8N || true
               "
 
-            # --- ETAPE B : .ENV ---
+            # --- B. ENV ---
             echo "🔧 Génération .env..."
             REPO_LOWER="${{ env.REPO_LOWER }}"
-
             cat <<EOF > .env
             IMAGE_NAME_API=ghcr.io/$REPO_LOWER/api:latest
             IMAGE_NAME_WEB=ghcr.io/$REPO_LOWER/web:latest
@@ -150,15 +175,13 @@ jobs:
             EOF
             chmod 600 .env
 
-            # --- ETAPE C : START ---
+            # --- C. START ---
             echo "📥 Pull & Start..."
             docker compose pull
             docker compose up -d --remove-orphans
 
-            # --- ETAPE D : SEED N8N (TRY & RETRY) ---
+            # --- D. SEED N8N (Try & Retry) ---
             echo "💉 Seed N8N..."
-
-            # Remplacement du user SQL
             sed -i 's/app_user/admin_postgres/g' apps/automation/seed/init-n8n.sql
 
             docker run --rm --network web_network \
@@ -167,40 +190,33 @@ jobs:
               postgres:16-alpine \
               bash -c "
                 echo '⏳ Tentative d injection du Seed...'
-                
                 MAX_RETRIES=30
                 COUNT=0
                 SUCCESS=0
-                
                 while [ \$COUNT -lt \$MAX_RETRIES ]; do
                   if psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql > /dev/null 2>&1; then
                     echo '✅ Injection réussie !'
                     SUCCESS=1
                     break
                   fi
-                  
                   echo \"... N8N migre encore (Tentative \$((COUNT+1))/\$MAX_RETRIES)...\"
                   sleep 2
                   COUNT=\$((COUNT+1))
                 done
 
                 if [ \$SUCCESS -eq 0 ]; then
-                  echo '❌ Échec : Impossible d injecter le seed après 60 secondes.'
-                  # On ré-exécute une fois sans masquer les erreurs pour le debug
+                  echo '❌ Échec Seed.'
                   psql -h postgres-central -U admin_postgres -d $PROJECT_DB_N8N -f /tmp/init-n8n.sql
                   exit 1
                 fi
-                
-                echo '✅ Seed terminé avec succès.'
               "
 
-            # --- ETAPE E : POST-DEPLOY ---
+            # --- E. POST-DEPLOY ---
             echo "📦 Migrations API..."
             docker compose run --rm -e DATABASE_URL=$DATABASE_URL api npm run db:migrate
 
             echo "📥 Import N8N Workflows..."
             WORKFLOWS_DIR="apps/automation/workflows"
-
             if [ -f "$WORKFLOWS_DIR/credentials.json" ]; then
               docker compose cp "$WORKFLOWS_DIR/credentials.json" n8n:/tmp/credentials.json
               docker compose exec -u node -T n8n n8n import:credentials --input=/tmp/credentials.json || true

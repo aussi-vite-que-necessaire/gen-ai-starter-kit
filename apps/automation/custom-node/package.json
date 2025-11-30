@@ -23,6 +23,7 @@
     "dist"
   ],
   "devDependencies": {
+    "@types/node": "^24.10.1",
     "n8n-workflow": "*",
     "tsx": "^4.19.2",
     "typescript": "^5.9.3"
