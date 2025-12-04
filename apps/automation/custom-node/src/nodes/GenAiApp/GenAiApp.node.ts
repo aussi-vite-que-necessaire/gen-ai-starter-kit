@@ -147,7 +147,7 @@ export class GenAiApp implements INodeType {
 
         try {
           const response = await this.helpers.request(options)
-          return (response || []).map((action: any) => ({
+          return (response || []).map((action: { name: string; slug: string }) => ({
             name: action.name,
             value: action.slug,
           }))
@@ -170,10 +170,10 @@ export class GenAiApp implements INodeType {
       const actionSlug = this.getNodeParameter("actionSlug", i) as string
 
       // Build payload from field_ parameters
-      const payload: Record<string, any> = {}
+      const payload: Record<string, unknown> = {}
       const nodeParams = this.getNode().parameters
 
-      for (const [key, value] of Object.entries(nodeParams)) {
+      for (const [key] of Object.entries(nodeParams)) {
         if (key.startsWith("field_")) {
           const fieldName = key.replace("field_", "")
           const fieldValue = this.getNodeParameter(key, i)
@@ -207,9 +207,10 @@ export class GenAiApp implements INodeType {
       try {
         const response = await this.helpers.request(requestOptions)
         returnData.push({ json: response })
-      } catch (error: any) {
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
         returnData.push({
-          json: { error: error.message },
+          json: { error: errorMessage },
           pairedItem: { item: i },
         })
       }
