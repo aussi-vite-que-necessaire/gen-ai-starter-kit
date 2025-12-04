@@ -3,7 +3,7 @@ import {
   isValidWorkflowType,
   type WorkflowType,
 } from "@genai/shared/workflows"
-import { pageGenerationHandler } from "./page-generation"
+import { pageGenerationHandler } from "./page-generation.js"
 
 // =============================================================================
 // HANDLERS REGISTRY

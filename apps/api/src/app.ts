@@ -1,11 +1,11 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { logger } from "hono/logger"
-import { env } from "./env"
-import { auth } from "./auth"
-import pagesRouter from "./routes/pages"
-import workflowsRouter from "./routes/workflows"
-import n8nRouter from "./routes/n8n"
+import { env } from "./env.js"
+import { auth } from "./auth.js"
+import pagesRouter from "./routes/pages.js"
+import workflowsRouter from "./routes/workflows.js"
+import n8nRouter from "./routes/n8n.js"
 
 export const createApp = () => {
   const app = new Hono()

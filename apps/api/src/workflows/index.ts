@@ -1,9 +1,9 @@
 import { eq } from "drizzle-orm"
-import { db } from "../db"
-import { workflows } from "../db/schema"
-import { handlers } from "./handlers"
-import { addWorkflowJob } from "./queues"
-import { QueueName } from "./config"
+import { db } from "../db.js"
+import { workflows } from "../db/schema.js"
+import { handlers } from "./handlers.js"
+import { addWorkflowJob } from "./queues.js"
+import { QueueName } from "./config.js"
 import type { WorkflowType } from "@genai/shared/workflows"
 
 // Re-export

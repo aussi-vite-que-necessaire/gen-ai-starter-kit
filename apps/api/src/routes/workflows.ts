@@ -2,10 +2,10 @@ import { Hono } from "hono"
 import { z } from "zod"
 import { zValidator } from "@hono/zod-validator"
 import { eq } from "drizzle-orm"
-import { requireAuth, type AuthEnv } from "../auth"
-import { db } from "../db"
-import { workflows } from "../db/schema"
-import { startWorkflow, isValidWorkflowType } from "../workflows"
+import { requireAuth, type AuthEnv } from "../auth.js"
+import { db } from "../db.js"
+import { workflows } from "../db/schema.js"
+import { startWorkflow, isValidWorkflowType } from "../workflows.js"
 
 const app = new Hono<AuthEnv>()
 

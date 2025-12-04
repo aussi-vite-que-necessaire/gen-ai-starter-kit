@@ -2,15 +2,15 @@ import { Hono } from "hono"
 import { z } from "zod"
 import { zValidator } from "@hono/zod-validator"
 import { eq } from "drizzle-orm"
-import { db } from "../db"
-import { workflows } from "../db/schema"
-import { env } from "../env"
+import { db } from "../db.js"
+import { workflows } from "../db/schema.js"
+import { env } from "../env.js"
 import {
   handlers,
   isValidWorkflowType,
   markWorkflowCompleted,
   markWorkflowFailed,
-} from "../workflows"
+} from "../workflows.js"
 
 const app = new Hono()
 

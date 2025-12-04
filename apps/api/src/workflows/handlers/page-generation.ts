@@ -2,8 +2,8 @@ import type {
   PageGenerationPayload,
   PageGenerationResult,
 } from "@genai/shared/workflows"
-import { db } from "../../db"
-import { pages } from "../../db/schema"
+import { db } from "../../db.js"
+import { pages } from "../../db/schema.js"
 
 // =============================================================================
 // SAVE RESULT

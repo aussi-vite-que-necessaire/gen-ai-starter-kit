@@ -1,8 +1,8 @@
 import { Hono } from "hono"
 import { eq, desc, and } from "drizzle-orm"
-import { requireAuth, type AuthEnv } from "../auth"
-import { db } from "../db"
-import { pages } from "../db/schema"
+import { requireAuth, type AuthEnv } from "../auth.js"
+import { db } from "../db.js"
+import { pages } from "../db/schema.js"
 
 const app = new Hono<AuthEnv>()
 

@@ -1,10 +1,10 @@
 import { Worker } from "bullmq"
 import { eq } from "drizzle-orm"
-import { env } from "../env"
-import { db } from "../db"
-import { workflows } from "../db/schema"
-import { QUEUE_CONFIGS } from "./config"
-import { WorkflowJobData } from "./queues"
+import { env } from "../env.js"
+import { db } from "../db.js"
+import { workflows } from "../db/schema.js"
+import { QUEUE_CONFIGS } from "./config.js"
+import { WorkflowJobData } from "./queues.js"
 
 const connection = {
   host: env.REDIS_HOST,

@@ -4,8 +4,8 @@
  * Usage: npm run db:seed -w api
  */
 
-import { db } from "./db"
-import { user, account } from "./db/schema"
+import { db } from "./db.js"
+import { user, account } from "./db/schema.js"
 import { eq } from "drizzle-orm"
 import { scrypt, randomBytes } from "crypto"
 import { promisify } from "util"

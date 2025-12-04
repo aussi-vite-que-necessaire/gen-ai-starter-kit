@@ -1,7 +1,7 @@
 import { serve } from "@hono/node-server"
-import { env } from "./env"
-import { createApp } from "./app"
-import { startWorkers } from "./workflows/worker"
+import { env } from "./env.js"
+import { createApp } from "./app.js"
+import { startWorkers } from "./workflows/worker.js"
 
 // 1. Creer l'app Hono
 const app = createApp()

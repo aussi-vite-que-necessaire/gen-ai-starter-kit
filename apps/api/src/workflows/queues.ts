@@ -1,6 +1,6 @@
 import { Queue } from "bullmq"
-import { env } from "../env"
-import { QUEUE_CONFIGS, QueueName } from "./config"
+import { env } from "../env.js"
+import { QUEUE_CONFIGS, QueueName } from "./config.js"
 
 // Connection Redis
 const connection = {
