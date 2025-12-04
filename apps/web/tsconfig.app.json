@@ -3,6 +3,8 @@
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "composite": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
     "lib": [
       "ES2022",
       "DOM",
