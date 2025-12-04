@@ -69,7 +69,7 @@ jobs:
       - name: Build Custom Node
         run: |
           cd apps/automation/custom-node
-          npm ci
+          HUSKY=0 npm ci
           npm run build
           # On nettoie pour ne garder que la prod
           rm -rf node_modules
