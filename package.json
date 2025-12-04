@@ -29,7 +29,7 @@
     "test:watch": "npm run test:watch --workspaces --if-present",
     "test:cov": "npm run test --workspaces --if-present -- --coverage",
     "dev:quality": "concurrently \"npm run typecheck:watch\" \"npm run test:watch\"",
-    "prepare": "husky"
+    "prepare": "node -e \"if(process.env.CI !== 'true') require('husky')()\""
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
