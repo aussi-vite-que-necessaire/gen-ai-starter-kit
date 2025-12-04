@@ -6,6 +6,7 @@ COPY packages/shared/package.json ./packages/shared/
 COPY apps/api/package*.json ./apps/api/
 ENV CI=true
 RUN npm install
+COPY tsconfig.base.json ./
 COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
 RUN npm run build --workspaces --if-present

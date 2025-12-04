@@ -11,7 +11,8 @@ COPY apps/web/package*.json ./apps/web/
 ENV CI=true
 RUN npm install --workspace=@genai/shared --workspace=web --ignore-scripts
 
-# 3. Copie le code (invalide seulement si code change)
+# 3. Copie le code et les tsconfigs
+COPY tsconfig.base.json ./
 COPY packages/shared ./packages/shared
 COPY apps/web ./apps/web
 
