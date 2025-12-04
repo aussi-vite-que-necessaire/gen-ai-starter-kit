@@ -4,6 +4,7 @@ WORKDIR /app
 COPY package*.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/api/package*.json ./apps/api/
+ENV CI=true
 RUN npm install
 COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api

@@ -8,6 +8,7 @@ COPY packages/shared/package.json ./packages/shared/
 COPY apps/web/package*.json ./apps/web/
 
 # 2. Install (cache si package.json ne change pas)
+ENV CI=true
 RUN npm install --workspace=@genai/shared --workspace=web --ignore-scripts
 
 # 3. Copie le code (invalide seulement si code change)
