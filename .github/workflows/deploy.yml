@@ -67,6 +67,7 @@ jobs:
           cache-dependency-path: apps/automation/custom-node/package-lock.json
 
       - name: Build Custom Node
+        run: |
           # Install dependencies at root (handles workspaces)
           npm ci
           
