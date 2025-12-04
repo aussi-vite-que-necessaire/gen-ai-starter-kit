@@ -1,6 +1,8 @@
 {
   "compilerOptions": {
-    "rootDirs": ["./src"],
+    "rootDirs": [
+      "./src"
+    ],
     "outDir": "./dist",
     "target": "es2019",
     "module": "commonjs",
@@ -8,7 +10,12 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "composite": true,
+    "types": [
+      "node"
+    ]
   },
-  "include": ["./src/**/*"]
+  "include": [
+    "./src/**/*"
+  ]
 }
