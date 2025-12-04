@@ -67,11 +67,14 @@ jobs:
           cache-dependency-path: apps/automation/custom-node/package-lock.json
 
       - name: Build Custom Node
-        run: |
+          # Install dependencies at root (handles workspaces)
+          npm ci
+          
+          # Build custom node
           cd apps/automation/custom-node
-          HUSKY=0 npm ci
           npm run build
-          # On nettoie pour ne garder que la prod
+          
+          # Clean up for production artifact
           rm -rf node_modules
           npm ci --omit=dev
 
