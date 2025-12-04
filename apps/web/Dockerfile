@@ -15,6 +15,9 @@ COPY packages/shared ./packages/shared
 COPY apps/web ./apps/web
 
 # Build le shared puis le web
+WORKDIR /app
+RUN npm run build --workspace=@genai/shared
+
 WORKDIR /app/apps/web
 RUN npm run build
 
