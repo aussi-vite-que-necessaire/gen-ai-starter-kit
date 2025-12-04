@@ -1,13 +1,13 @@
 ### 📝 Dernière Action (Critique) : Le Master Context V6
 
-On a changé beaucoup de choses (séparation des DBs, script d'injection SQL, abandon de BullMQ). Il faut mettre à jour ta "Bible" pour que la prochaine fois, l'IA sache exactement comment ta stack fonctionne.
+On a consolidé l'architecture autour de **BullMQ** pour la scalabilité et de **n8n** pour l'orchestration. Il faut mettre à jour ta "Bible" pour que la prochaine fois, l'IA sache exactement comment ta stack fonctionne.
 
 Sauvegarde ça dans `PROJECT_CONTEXT.md`.
 
 ---
 
 ```markdown
-# 📘 GEN AI STARTER KIT - MASTER CONTEXT (V6 - THE GITOPS STACK)
+# 📘 GEN AI STARTER KIT - MASTER CONTEXT (V6 - THE SCALABLE STACK)
 
 Ce document décrit l'état technique final de l'architecture **Hybrid Automation** (Code + n8n Embedded).
 
@@ -15,9 +15,10 @@ Ce document décrit l'état technique final de l'architecture **Hybrid Automatio
 
 ## 1. Philosophie : "The Automation Stack"
 
-- **Hybrid Orchestration :** n8n (NoCode) gère les flux. L'API (Code) gère la donnée et la sécurité.
+- **Hybrid Orchestration :** n8n (NoCode) gère les flux. L'API (Code) gère la donnée, la sécurité et la scalabilité.
+- **Scalable Queues :** BullMQ (Redis) absorbe la charge et distribue les jobs aux workers.
 - **GitOps :** L'état de n8n (Workflows, Credentials, User) est versionné dans Git et déployé automatiquement.
-- **Preview Environments :** Chaque Pull Request déploie une stack complète et isolée (API + Web + DB + n8n).
+- **Preview Environments :** Chaque Pull Request déploie une stack complète et isolée.
 
 ---
 
@@ -26,12 +27,15 @@ Ce document décrit l'état technique final de l'architecture **Hybrid Automatio
 ### Services
 
 - **API (`apps/api`) :** Hono.js. Expose port 3000.
+    - **Producer :** Pousse les jobs dans Redis.
+    - **Worker :** Consomme les jobs et appelle n8n.
 - **Web (`apps/web`) :** React + Vite.
 - **n8n (`apps/automation`) :** Instance embedded.
   - Base de données dédiée : `n8n` (Postgres).
   - Clé de chiffrement fixe : `N8N_ENCRYPTION_KEY`.
   - Sécurité API : `INTERNAL_API_SECRET`.
 - **DB :** Postgres 15. Contient deux bases : `webapp` et `n8n`.
+- **Redis :** Pour BullMQ.
 
 ### Flux de Déploiement (CI/CD)
 
@@ -44,23 +48,23 @@ Ce document décrit l'état technique final de l'architecture **Hybrid Automatio
 
 ---
 
-## 3. Communication API <-> n8n ("Action-Driven")
+## 3. Communication API <-> n8n ("Queue-Driven")
 
-Nous n'utilisons plus de queues complexes (BullMQ). L'API est un exécutant synchrone.
+L'architecture est asynchrone et résiliente grâce à BullMQ.
 
-### Endpoints Internes (`interface/http/routes/internal.ts`)
+### Le Flux "Queue -> Worker -> Webhook -> Poll"
 
-Protégés par le header `x-internal-secret`.
-
-1.  **`GET /actions` (Discovery)** : Liste les capacités de l'API (pour l'UI n8n).
-2.  **`POST /runs/:id/execute` (RPC)** : Exécute une action TypeScript (ex: `update-status`, `create-page`).
-
-### Actions (`core/processors/`)
-
-Des fonctions atomiques validées par Zod.
-
-- `update-status` : Met à jour le statut dans la table `generation`.
-- `create-page`, `save-content`... : Logique métier.
+1.  **Trigger (API)** : L'API reçoit une requête (ex: `POST /generate`) et push un job dans une queue BullMQ (ex: `page-generation`).
+2.  **Process (Worker)** :
+    -   Le Worker dépile le job.
+    -   Il met à jour le statut en DB (`RUNNING`).
+    -   Il appelle le **Webhook n8n** correspondant via HTTP (sécurisé par `x-internal-secret`).
+3.  **Orchestration (n8n)** :
+    -   n8n exécute le workflow (logique métier, appels IA, etc.).
+    -   **IMPORTANT :** n8n ne touche JAMAIS la DB `webapp` directement. Il renvoie le résultat au Worker ou appelle l'API pour sauvegarder.
+4.  **Completion (Worker)** :
+    -   Le Worker poll la DB (ou attend la réponse synchrone du webhook si configuré ainsi) pour vérifier la fin du traitement.
+    -   Il marque le job comme `COMPLETED` ou `FAILED`.
 
 ---
 
@@ -68,40 +72,36 @@ Des fonctions atomiques validées par Zod.
 
 Une table unique pour le suivi des processus :
 
-- **`generation`** :
+- **`generation`** (ou `workflows`) :
   - `id` (UUID)
-  - `status` (PENDING, PROCESSING, COMPLETED)
+  - `status` (PENDING, RUNNING, COMPLETED, FAILED)
   - `displayMessage` (Feedback UI pour le frontend)
   - `result` (JSON final)
+  - `error` (Message d'erreur si failed)
 
 ---
 
 ## 5. Workflow de Développement (Guide)
 
 ### A. Ajouter une Feature Backend
-
-1.  Créer l'Action dans `core/processors/my-action.ts` (Zod Schema + Handler).
-2.  L'ajouter dans `core/processors/index.ts`.
-3.  L'API expose automatiquement cette action à n8n.
+1.  Définir la Queue dans `apps/api/src/workflows/config.ts`.
+2.  Créer le Worker Processor.
+3.  Exposer l'endpoint qui ajoute le job à la queue.
 
 ### B. Modifier un Workflow n8n
-
 1.  Lancer `npm run dev`.
 2.  Aller sur `http://localhost:5678`.
 3.  Modifier le workflow.
 4.  **Sauvegarder dans Git :** Lancer `npm run n8n:export` (ou commit direct grâce à Husky).
 
 ### C. Gestion des Secrets & Seeds
-
 - **Credentials n8n :** Ne jamais commiter. Utiliser des expressions `{{ $env.MY_KEY }}` dans n8n et les définir dans le `.env`.
-- **User Admin n8n :** Si modification nécessaire, régénérer le seed :
-  `docker exec gen-ai-starter-kit-db pg_dump -U app_user -d n8n --clean --if-exists > apps/automation/seed/init-n8n.sql`
 
 ---
 
 ## 6. Commandes Utiles
 
-- `npm run dev` : Lance toute la stack (API + Web + DB + n8n).
+- `npm run dev` : Lance toute la stack (API + Web + DB + n8n + Redis).
 - `npm run reset` : "Factory Reset" (Supprime volumes et relance).
 - `npm run n8n:export` : Sauvegarde les workflows n8n vers Git.
 - `npm run db:studio` : Ouvre Drizzle Studio.
@@ -109,4 +109,4 @@ Une table unique pour le suivi des processus :
 
 ---
 
-Repose-toi bien ce soir. La prochaine fois, on fera la partie "Fun" : coder le **Custom Node n8n** pour que tu aies tes propres blocs "GenAI App" dans l'interface ! 🛌💤
+C'est propre, scalable et documenté. On est parés pour la suite ! 🚀

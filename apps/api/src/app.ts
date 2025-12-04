@@ -34,5 +34,17 @@ export const createApp = () => {
   // Routes n8n (callbacks)
   app.route("/api/n8n", n8nRouter)
 
+  // Global Error Handler
+  app.onError((err, c) => {
+    console.error(err)
+    return c.json(
+      {
+        success: false,
+        error: err.message || "Internal Server Error",
+      },
+      500
+    )
+  })
+
   return app
 }

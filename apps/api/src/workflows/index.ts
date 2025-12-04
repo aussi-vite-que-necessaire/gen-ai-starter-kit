@@ -5,7 +5,6 @@ import { handlers } from "./handlers"
 import { addWorkflowJob } from "./queues"
 import { QueueName } from "./config"
 import type { WorkflowType } from "@genai/shared/workflows"
-import { isValidWorkflowType } from "@genai/shared/workflows"
 
 // Re-export
 export { handlers }

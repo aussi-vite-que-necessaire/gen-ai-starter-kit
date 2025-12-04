@@ -5,8 +5,13 @@ on:
     branches: ["main"]
 
 jobs:
+  # --- JOB 0 : QUALITY GATE ---
+  quality:
+    uses: ./.github/workflows/quality.yml
+
   # --- JOB 1 : CONSTRUCTION DES IMAGES DOCKER (PARALLÈLE) ---
   build-images:
+    needs: [quality]
     runs-on: ubuntu-latest
     strategy:
       matrix:

@@ -21,10 +21,18 @@
     "--- DATABASE ---": "---",
     "db:studio": "cd apps/api && npm run db:studio",
     "db:migrate": "cd apps/api && npm run db:migrate",
+    "lint": "eslint .",
+    "typecheck": "tsc -b",
+    "typecheck:watch": "tsc -b -w",
+    "test": "npm run test --workspaces --if-present",
+    "test:watch": "npm run test:watch --workspaces --if-present",
+    "test:cov": "npm run test --workspaces --if-present -- --coverage",
+    "dev:quality": "concurrently \"npm run typecheck:watch\" \"npm run test:watch\"",
     "prepare": "husky"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
-    "husky": "^9.1.7"
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7"
   }
 }
